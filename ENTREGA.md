@@ -5,8 +5,7 @@
 ## 1. Link da Aplicação Hospedada no GitHub Pages
 
 🔗 **Link da Aplicação:**
-`https://<usuario_github>.github.io/<nome_repositorio>/`
-*(A aplicação foi construída e empacotada na pasta `dist/` com caminhos relativos `base: './'`, pronta para ser servida pelo GitHub Pages).*
+`[https://<usuario_github>.github.io/<nome_repositorio>/](https://vieira2020.github.io/Sistema-de-Mecanica/)`
 
 ---
 
