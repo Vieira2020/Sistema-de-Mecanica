@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-accent: #8C4580;
+  --color-dark: #032326;
+  --color-header: #06402F;
+  --color-card-sec: #125938;
+  --color-card-tert: #308C50;
+  --color-bg: #F7F7E6;
+}
+
+body {
+  background-color: #F7F7E6;
+  color: #000000;
+  font-family: 'PT Serif Caption', 'Neuton', 'Bona Nova SC', serif;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(3, 35, 38, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #125938;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #8C4580;
+}
