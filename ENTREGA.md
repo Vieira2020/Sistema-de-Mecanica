@@ -5,7 +5,7 @@
 ## 1. Link da Aplicação Hospedada no GitHub Pages
 
 🔗 **Link da Aplicação:**
-`[https://<usuario_github>.github.io/<nome_repositorio>/](https://vieira2020.github.io/Sistema-de-Mecanica/)`
+`(https://vieira2020.github.io/Sistema-de-Mecanica/)`
 
 ---
 
