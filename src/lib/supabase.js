@@ -149,13 +149,15 @@ const saveLocalData = (data) => {
 };
 
 // Listen to storage events for multi-tab sync
-window.addEventListener('storage', (e) => {
-  if (e.key === 'shibuya_db' && e.newValue) {
-    try {
-      memoryStore = JSON.parse(e.newValue);
-    } catch (err) {}
-  }
-});
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'shibuya_db' && e.newValue) {
+      try {
+        memoryStore = JSON.parse(e.newValue);
+      } catch (err) {}
+    }
+  });
+}
 
 // DATA ACCESS LAYER
 export const db = {
@@ -298,6 +300,12 @@ export const db = {
   },
 
   async deletePart(partId) {
+    if (supabase) {
+      try {
+        await supabase.from('peca').delete().eq('id', partId);
+      } catch (e) {}
+    }
+
     const local = getLocalData();
     local.parts = local.parts.filter(p => p.id !== partId);
     saveLocalData(local);
@@ -305,16 +313,26 @@ export const db = {
   },
 
   async updatePartPrice(partId, precoMin, precoMedio, precoMax, estoque) {
+    const updateObj = {
+      preco_min: parseFloat(precoMin),
+      preco_medio: parseFloat(precoMedio),
+      preco_max: parseFloat(precoMax),
+      ultima_atualizacao: new Date().toISOString()
+    };
+    if (estoque !== undefined) {
+      updateObj.estoque_atual = parseInt(estoque);
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from('peca').update(updateObj).eq('id', partId);
+      } catch (e) {}
+    }
+
     const local = getLocalData();
     const pIndex = local.parts.findIndex(p => p.id === partId);
     if (pIndex !== -1) {
-      local.parts[pIndex].preco_min = parseFloat(precoMin);
-      local.parts[pIndex].preco_medio = parseFloat(precoMedio);
-      local.parts[pIndex].preco_max = parseFloat(precoMax);
-      if (estoque !== undefined) {
-        local.parts[pIndex].estoque_atual = parseInt(estoque);
-      }
-      local.parts[pIndex].ultima_atualizacao = new Date().toISOString();
+      local.parts[pIndex] = { ...local.parts[pIndex], ...updateObj };
       saveLocalData(local);
     }
     return true;
@@ -365,7 +383,31 @@ export const db = {
 
     if (supabase) {
       try {
-        await supabase.from('ordem_servico').insert([newOS]);
+        await supabase.from('ordem_servico').insert([{
+          id: newOS.id,
+          cliente_id: newOS.cliente_id,
+          veiculo_id: newOS.veiculo_id,
+          responsavel_id: newOS.responsavel_id,
+          tipo_servico: newOS.tipo_servico,
+          data_entrada: newOS.data_entrada,
+          previsao_entrega: newOS.previsao_entrega,
+          mao_de_obra: newOS.mao_de_obra,
+          valor_total: newOS.valor_total,
+          status: newOS.status,
+          criado_por: newOS.criado_por,
+          criado_em: newOS.criado_em,
+          atualizado_em: newOS.atualizado_em
+        }]);
+
+        await supabase.from('atualizacao').insert([{
+          id: newOS.timeline[0].id,
+          os_id: newOS.id,
+          autor_id: user.id,
+          data_hora: newOS.timeline[0].data_hora,
+          status_anterior: null,
+          status_novo: 'RECEBIDO',
+          observacao: newOS.timeline[0].observacao
+        }]);
       } catch (e) {}
     }
 
@@ -400,6 +442,26 @@ export const db = {
     if (!os.timeline) os.timeline = [];
     os.timeline.unshift(timelineEntry);
 
+    if (supabase) {
+      try {
+        await supabase.from('ordem_servico').update({
+          status: newStatus,
+          atualizado_em: os.atualizado_em,
+          entregue_em: os.entregue_em || null
+        }).eq('id', osId);
+
+        await supabase.from('atualizacao').insert([{
+          id: timelineEntry.id,
+          os_id: osId,
+          autor_id: user.id,
+          data_hora: timelineEntry.data_hora,
+          status_anterior: prevStatus,
+          status_novo: newStatus,
+          observacao: timelineEntry.observacao
+        }]);
+      } catch (e) {}
+    }
+
     local.orders[osIndex] = os;
     saveLocalData(local);
     return os;
@@ -424,6 +486,20 @@ export const db = {
     os.timeline.unshift(timelineEntry);
     os.atualizado_em = new Date().toISOString();
 
+    if (supabase) {
+      try {
+        await supabase.from('atualizacao').insert([{
+          id: timelineEntry.id,
+          os_id: osId,
+          autor_id: user.id,
+          data_hora: timelineEntry.data_hora,
+          status_anterior: os.status,
+          status_novo: os.status,
+          observacao: observacao
+        }]);
+      } catch (e) {}
+    }
+
     local.orders[osIndex] = os;
     saveLocalData(local);
     return os;
@@ -446,6 +522,14 @@ export const db = {
         throw new Error(`Estoque insuficiente! Disponível: ${local.parts[partIndex].estoque_atual} un.`);
       }
       local.parts[partIndex].estoque_atual -= qtyNum;
+
+      if (supabase) {
+        try {
+          await supabase.from('peca').update({
+            estoque_atual: local.parts[partIndex].estoque_atual
+          }).eq('id', pecaId);
+        } catch (e) {}
+      }
     }
 
     const newOsPeca = {
@@ -462,6 +546,25 @@ export const db = {
     const pecasTotal = os.pecas.reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
     os.valor_total = pecasTotal + parseFloat(os.mao_de_obra || 0);
     os.atualizado_em = new Date().toISOString();
+
+    if (supabase) {
+      try {
+        await supabase.from('os_peca').insert([{
+          id: newOsPeca.id,
+          os_id: osId,
+          peca_id: pecaId,
+          quantidade: qtyNum,
+          preco_unitario: parseFloat(precoUnitario),
+          fornecedor: fornecedor || '',
+          criado_por: user.id
+        }]);
+
+        await supabase.from('ordem_servico').update({
+          valor_total: os.valor_total,
+          atualizado_em: os.atualizado_em
+        }).eq('id', osId);
+      } catch (e) {}
+    }
 
     local.orders[osIndex] = os;
     saveLocalData(local);
@@ -484,6 +587,14 @@ export const db = {
       const partIndex = local.parts.findIndex(p => p.id === removed.peca_id);
       if (partIndex !== -1) {
         local.parts[partIndex].estoque_atual += removed.quantidade;
+
+        if (supabase) {
+          try {
+            await supabase.from('peca').update({
+              estoque_atual: local.parts[partIndex].estoque_atual
+            }).eq('id', removed.peca_id);
+          } catch (e) {}
+        }
       }
 
       os.pecas.splice(osPecaIndex, 1);
@@ -492,6 +603,16 @@ export const db = {
       const pecasTotal = os.pecas.reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
       os.valor_total = pecasTotal + parseFloat(os.mao_de_obra || 0);
       os.atualizado_em = new Date().toISOString();
+
+      if (supabase) {
+        try {
+          await supabase.from('os_peca').delete().eq('id', osPecaId);
+          await supabase.from('ordem_servico').update({
+            valor_total: os.valor_total,
+            atualizado_em: os.atualizado_em
+          }).eq('id', osId);
+        } catch (e) {}
+      }
 
       local.orders[osIndex] = os;
       saveLocalData(local);
