@@ -28,10 +28,10 @@ export const Navbar = ({ activeTab, setActiveTab, searchTerm, setSearchTerm, ope
           <div className="hidden md:flex flex-1 max-w-xs mx-6 relative">
             <input
               type="text"
-              placeholder="Buscar por placa, cliente ou OS..."
+              placeholder="Digite 'placa' ou busque placa, cliente..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-[#125938] text-white placeholder-gray-300 text-sm rounded-lg pl-9 pr-4 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#8C4580] border border-emerald-700"
+              className="w-full bg-[#125938] text-white placeholder-gray-300 text-sm rounded-lg pl-9 pr-4 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#8C4580] border border-emerald-700 font-mono"
             />
             <Search className="w-4 h-4 text-gray-300 absolute left-2.5 top-2.5" />
           </div>

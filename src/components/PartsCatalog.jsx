@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { Package, Plus, Search, DollarSign, Tag, Layers } from 'lucide-react';
+import { Package, Plus, Trash2, Edit2, AlertCircle } from 'lucide-react';
 
 export const PartsCatalog = ({ searchTerm }) => {
   const { isAdmin } = useAuth();
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingPart, setEditingPart] = useState(null);
 
   const [partForm, setPartForm] = useState({
     codigo_interno: '',
@@ -37,8 +38,20 @@ export const PartsCatalog = ({ searchTerm }) => {
       return;
     }
 
-    await db.addPart(partForm);
+    if (editingPart) {
+      await db.updatePartPrice(
+        editingPart.id,
+        partForm.preco_min,
+        partForm.preco_medio,
+        partForm.preco_max,
+        partForm.estoque_atual
+      );
+    } else {
+      await db.addPart(partForm);
+    }
+
     setShowModal(false);
+    setEditingPart(null);
     setPartForm({
       codigo_interno: '',
       nome: '',
@@ -49,6 +62,27 @@ export const PartsCatalog = ({ searchTerm }) => {
       estoque_atual: '0'
     });
     loadParts();
+  };
+
+  const handleDeletePart = async (partId) => {
+    if (confirm('Tem certeza que deseja remover esta peça do catálogo?')) {
+      await db.deletePart(partId);
+      loadParts();
+    }
+  };
+
+  const handleEditClick = (part) => {
+    setEditingPart(part);
+    setPartForm({
+      codigo_interno: part.codigo_interno,
+      nome: part.nome,
+      modelo_compativel: part.modelo_compativel || '',
+      preco_min: String(part.preco_min),
+      preco_medio: String(part.preco_medio),
+      preco_max: String(part.preco_max),
+      estoque_atual: String(part.estoque_atual)
+    });
+    setShowModal(true);
   };
 
   const term = searchTerm ? searchTerm.toLowerCase().trim() : '';
@@ -70,16 +104,28 @@ export const PartsCatalog = ({ searchTerm }) => {
         <div>
           <div className="flex items-center gap-2">
             <Package className="w-6 h-6 text-[#8C4580]" />
-            <h2 className="text-xl font-bold font-serif">Catálogo de Peças & Tabela de Referência (RF-016, RF-019)</h2>
+            <h2 className="text-xl font-bold font-serif">Catálogo de Peças & Controle de Estoque (RF-016, RF-019)</h2>
           </div>
           <p className="text-xs text-gray-300 font-sans mt-1">
-            Lista de componentes, modelos compatíveis e faixas de preços praticadas no mercado.
+            Gestão de peças, atualização de preços de referência e dedução automática ao vincular em Ordens de Serviço.
           </p>
         </div>
 
         {isAdmin && (
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              setEditingPart(null);
+              setPartForm({
+                codigo_interno: '',
+                nome: '',
+                modelo_compativel: '',
+                preco_min: '',
+                preco_max: '',
+                preco_medio: '',
+                estoque_atual: '0'
+              });
+              setShowModal(true);
+            }}
             className="bg-[#125938] hover:bg-[#06402F] text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 shadow transition border border-emerald-600"
           >
             <Plus className="w-4 h-4" /> Cadastrar Peça no Catálogo
@@ -101,7 +147,11 @@ export const PartsCatalog = ({ searchTerm }) => {
                   <span className="font-mono text-xs font-bold bg-[#125938] text-white px-2 py-0.5 rounded">
                     {part.codigo_interno}
                   </span>
-                  <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
+                    part.estoque_atual <= 2
+                      ? 'bg-red-50 text-red-800 border-red-200'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  }`}>
                     Estoque: {part.estoque_atual} un
                   </span>
                 </div>
@@ -120,18 +170,35 @@ export const PartsCatalog = ({ searchTerm }) => {
                   <span className="text-gray-600">Máx: R$ {part.preco_max}</span>
                 </div>
               </div>
+
+              {isAdmin && (
+                <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 text-xs">
+                  <button
+                    onClick={() => handleEditClick(part)}
+                    className="text-gray-600 hover:text-emerald-800 flex items-center gap-1 p-1"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Alterar Preços / Estoque
+                  </button>
+                  <button
+                    onClick={() => handleDeletePart(part.id)}
+                    className="text-red-600 hover:text-red-800 flex items-center gap-1 p-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Remover
+                  </button>
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
 
-      {/* Modal Nova Peça */}
+      {/* Modal Nova / Editar Peça */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 border-t-8 border-[#125938]">
             <h3 className="text-lg font-bold font-serif text-[#06402F] flex items-center gap-2">
               <Package className="w-5 h-5 text-[#8C4580]" />
-              Cadastrar Peça no Catálogo
+              {editingPart ? 'Alterar Preços / Estoque' : 'Cadastrar Peça no Catálogo'}
             </h3>
 
             <form onSubmit={handleAddPart} className="space-y-3 text-xs">
@@ -141,15 +208,16 @@ export const PartsCatalog = ({ searchTerm }) => {
                   <input
                     type="text"
                     required
+                    disabled={Boolean(editingPart)}
                     value={partForm.codigo_interno}
                     onChange={(e) => setPartForm({ ...partForm, codigo_interno: e.target.value.toUpperCase() })}
                     placeholder="PEC-005"
-                    className="w-full border rounded p-2 uppercase font-mono"
+                    className="w-full border rounded p-2 uppercase font-mono disabled:bg-gray-100"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Estoque Inicial</label>
+                  <label className="block font-bold text-gray-700 mb-1">Estoque Disponível *</label>
                   <input
                     type="number"
                     min="0"
@@ -165,10 +233,11 @@ export const PartsCatalog = ({ searchTerm }) => {
                 <input
                   type="text"
                   required
+                  disabled={Boolean(editingPart)}
                   value={partForm.nome}
                   onChange={(e) => setPartForm({ ...partForm, nome: e.target.value })}
                   placeholder="Ex: Correia Dentada"
-                  className="w-full border rounded p-2"
+                  className="w-full border rounded p-2 disabled:bg-gray-100"
                 />
               </div>
 
@@ -176,10 +245,11 @@ export const PartsCatalog = ({ searchTerm }) => {
                 <label className="block font-bold text-gray-700 mb-1">Modelos Compatíveis</label>
                 <input
                   type="text"
+                  disabled={Boolean(editingPart)}
                   value={partForm.modelo_compativel}
                   onChange={(e) => setPartForm({ ...partForm, modelo_compativel: e.target.value })}
                   placeholder="Ex: Fiat Uno / Palio / Siena"
-                  className="w-full border rounded p-2"
+                  className="w-full border rounded p-2 disabled:bg-gray-100"
                 />
               </div>
 
@@ -234,7 +304,7 @@ export const PartsCatalog = ({ searchTerm }) => {
                   type="submit"
                   className="px-4 py-2 bg-[#125938] text-white rounded font-bold shadow hover:bg-[#06402F]"
                 >
-                  Salvar Peça
+                  {editingPart ? 'Salvar Alterações' : 'Salvar Peça'}
                 </button>
               </div>
             </form>

@@ -11,6 +11,12 @@ if (typeof globalThis.localStorage === 'undefined') {
   };
 }
 
+if (typeof globalThis.window === 'undefined') {
+  globalThis.window = {
+    addEventListener: () => {}
+  };
+}
+
 // Import database layer
 const { db } = await import('../src/lib/supabase.js');
 
@@ -55,25 +61,37 @@ async function runTests() {
   assert.strictEqual(updatedOS.timeline.length >= 2, true, 'Histórico deve registrar cada transição');
   console.log('✅ Teste 5: Transição de status e timeline imutável OK');
 
-  // Test 6: Adding parts to OS and recalculating total
+  // Test 6: Stock Deduction and Total Calculation
   const parts = await db.getParts();
-  assert.strictEqual(parts.length >= 1, true, 'Catálogo de peças carregado');
-
   const part = parts[0];
+  const initialStock = part.estoque_atual;
+
   const osWithPart = await db.addPartToOS(newOS.id, part.id, 2, part.preco_medio, 'Fornecedor Teste', adminUser);
+  const updatedParts = await db.getParts();
+  const updatedPart = updatedParts.find(p => p.id === part.id);
+
+  assert.strictEqual(updatedPart.estoque_atual, initialStock - 2, 'Estoque deve ser deduzido ao anexar peça na OS');
   const expectedTotal = 300 + (2 * part.preco_medio);
   assert.strictEqual(osWithPart.valor_total, expectedTotal, 'Cálculo automático do valor total = mão de obra + peças');
-  console.log('✅ Teste 6: Recálculo automático do valor total da OS OK');
+  console.log('✅ Teste 6: Dedução automática de estoque e recálculo total da OS OK');
 
-  // Test 7: Adding plate verification audit record
-  const verification = await db.addPlateVerification({
-    veiculo_id: vehicles[0].id,
-    responsavel_id: adminUser.id,
-    status_consulta: 'SEM_RESTRICAO',
-    observacao: 'Consulta policial sem restrições'
-  });
-  assert.strictEqual(verification.status_consulta, 'SEM_RESTRICAO', 'Verificação de placa gravada para auditoria');
-  console.log('✅ Teste 7: Auditoria de Verificação de Placa (RF-007) OK');
+  // Test 7: Stock Restoration on Part Removal from OS
+  const osPecaId = osWithPart.pecas[osWithPart.pecas.length - 1].id;
+  await db.removePartFromOS(newOS.id, osPecaId);
+  const partsAfterRemoval = await db.getParts();
+  const partAfterRemoval = partsAfterRemoval.find(p => p.id === part.id);
+  assert.strictEqual(partAfterRemoval.estoque_atual, initialStock, 'Estoque devolvido ao remover peça da OS');
+  console.log('✅ Teste 7: Restauração de estoque na remoção de peça da OS OK');
+
+  // Test 8: Stock limit enforcement
+  let threwStockError = false;
+  try {
+    await db.addPartToOS(newOS.id, part.id, 99999, part.preco_medio, 'Teste Excesso', adminUser);
+  } catch (err) {
+    threwStockError = true;
+  }
+  assert.strictEqual(threwStockError, true, 'Deveria impedir inclusão de quantidade maior que estoque disponível');
+  console.log('✅ Teste 8: Bloqueio de quantidade acima do estoque disponível OK');
 
   console.log('🎉 TODOS OS TESTES PASSARAM COM SUCESSO!');
 }

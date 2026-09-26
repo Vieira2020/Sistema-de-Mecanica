@@ -10,13 +10,9 @@ import {
   Plus,
   ArrowLeft,
   CheckCircle2,
-  DollarSign,
   Send,
-  Calendar,
-  AlertTriangle,
+  Trash2,
   Lock,
-  Hammer,
-  ShieldCheck,
   FileText
 } from 'lucide-react';
 
@@ -63,6 +59,10 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
   const vehicle = vehicles.find((v) => v.id === os.veiculo_id);
   const responsibleUser = users.find((u) => u.id === os.responsavel_id);
 
+  // Mechanic assigned to this OS can view pricing for this OS
+  const isAssignedMechanic = user.id === os.responsavel_id;
+  const canViewOSPrices = isAdmin || isAssignedMechanic;
+
   const handleStatusChange = async (e) => {
     e.preventDefault();
     if (newStatus === os.status) {
@@ -98,17 +98,27 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
     e.preventDefault();
     if (!partForm.peca_id || !partForm.quantidade) return;
 
-    await db.addPartToOS(
-      os.id,
-      partForm.peca_id,
-      partForm.quantidade,
-      partForm.preco_unitario,
-      partForm.fornecedor,
-      user
-    );
+    try {
+      await db.addPartToOS(
+        os.id,
+        partForm.peca_id,
+        partForm.quantidade,
+        partForm.preco_unitario,
+        partForm.fornecedor,
+        user
+      );
+      setShowPartModal(false);
+      onRefresh();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
-    setShowPartModal(false);
-    onRefresh();
+  const handleRemovePart = async (osPecaId) => {
+    if (confirm('Tem certeza que deseja remover esta peça da OS? O estoque será devolvido.')) {
+      await db.removePartFromOS(os.id, osPecaId);
+      onRefresh();
+    }
   };
 
   const currentStatusIndex = STATUS_FLOW.indexOf(os.status);
@@ -137,8 +147,8 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
           </div>
         </div>
 
-        {/* Financial Badge - Admin Only */}
-        {isAdmin ? (
+        {/* Financial Badge - Visible to Admin or Assigned Mechanic */}
+        {canViewOSPrices ? (
           <div className="bg-[#125938] px-4 py-2 rounded-lg text-right border border-emerald-700">
             <span className="text-[10px] text-emerald-200 uppercase tracking-wider block">Valor Total da OS</span>
             <span className="text-xl font-bold font-mono text-white">
@@ -148,7 +158,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
         ) : (
           <div className="bg-amber-950/80 px-3 py-1.5 rounded-lg text-amber-200 text-xs flex items-center gap-1.5 border border-amber-800">
             <Lock className="w-4 h-4 text-amber-400" />
-            <span>Valores e dados financeiros restritos ao Admin (RF-003)</span>
+            <span>Valores e dados financeiros restritos (RF-003)</span>
           </div>
         )}
       </div>
@@ -282,12 +292,12 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                 <Package className="w-4 h-4 text-[#8C4580]" />
                 Peças Utilizadas ({os.pecas?.length || 0})
               </span>
-              {isAdmin && (
+              {(isAdmin || isAssignedMechanic) && (
                 <button
                   onClick={() => setShowPartModal(true)}
                   className="bg-[#8C4580] hover:bg-[#723668] text-white px-2 py-1 rounded text-[11px] font-sans flex items-center gap-1"
                 >
-                  <Plus className="w-3 h-3" /> Vincular Peça
+                  <Plus className="w-3 h-3" /> Anexar Peça
                 </button>
               )}
             </div>
@@ -296,12 +306,12 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
               {!os.pecas || os.pecas.length === 0 ? (
                 <p className="text-gray-500 italic text-center py-2">Nenhuma peça vinculada a esta OS.</p>
               ) : (
-                os.pecas.map((p, idx) => {
+                os.pecas.map((p) => {
                   const partObj = parts.find((pt) => pt.id === p.peca_id);
                   const subtotal = p.quantidade * p.preco_unitario;
 
                   return (
-                    <div key={idx} className="bg-gray-50 p-2.5 rounded border flex justify-between items-center">
+                    <div key={p.id} className="bg-gray-50 p-2.5 rounded border flex justify-between items-center">
                       <div>
                         <p className="font-bold text-gray-900">{partObj?.nome || 'Peça'}</p>
                         <p className="text-gray-500 text-[11px]">
@@ -309,11 +319,23 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                         </p>
                       </div>
 
-                      {isAdmin && (
-                        <div className="text-right font-mono font-bold text-emerald-900">
-                          R$ {subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {canViewOSPrices && (
+                          <div className="text-right font-mono font-bold text-emerald-900">
+                            R$ {subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </div>
+                        )}
+
+                        {(isAdmin || isAssignedMechanic) && (
+                          <button
+                            onClick={() => handleRemovePart(p.id)}
+                            title="Remover peça da OS"
+                            className="text-red-600 hover:text-red-800 p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })
@@ -331,7 +353,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
               Registrar Atualização Técnica (Mecânico / Funileiro)
             </h4>
             <p className="text-xs text-gray-500">
-              Adicione atualizações e registros do serviço executado sem necessariamente alterar o status da OS (RF-014).
+              Adicione atualizações e registros do serviço executado sem alterar o status da OS (RF-014).
             </p>
 
             <form onSubmit={handleAddTechNote} className="space-y-2 text-xs">
@@ -339,7 +361,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                 rows={3}
                 value={techNote}
                 onChange={(e) => setTechNote(e.target.value)}
-                placeholder="Ex: Motor desmontado. Identificado desgaste nas buchas da suspensão e vazamento no óleo."
+                placeholder="Ex: Motor desmontado. Identificado desgaste nas buchas da suspensão e substituição do filtro efetuada."
                 className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-[#8C4580]"
               ></textarea>
 
@@ -416,13 +438,13 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
         </div>
       </div>
 
-      {/* Modal Vincular Peça */}
+      {/* Modal Anexar Peça */}
       {showPartModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 border-t-8 border-[#8C4580]">
             <h3 className="text-lg font-bold font-serif text-[#06402F] flex items-center gap-2">
               <Package className="w-5 h-5 text-[#8C4580]" />
-              Vincular Peça à OS #{os.numero}
+              Anexar Peça à OS #{os.numero}
             </h3>
 
             <form onSubmit={handleAddPart} className="space-y-3 text-xs">
@@ -436,8 +458,8 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                 >
                   <option value="">-- Selecione uma peça --</option>
                   {parts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.codigo_interno} - {p.nome} (Ref: R$ {p.preco_medio})
+                    <option key={p.id} value={p.id} disabled={p.estoque_atual <= 0}>
+                      {p.codigo_interno} - {p.nome} (Estoque: {p.estoque_atual} un | Ref: R$ {p.preco_medio})
                     </option>
                   ))}
                 </select>

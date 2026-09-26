@@ -1,12 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Keys from localStorage or Vite environment
+// Default Supabase config or user-configured localStorage
+const DEFAULT_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://twi84i9kke71ow0lazuhxw.supabase.co';
+const DEFAULT_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Twi84I9kKe71Ow0lazUhxw_eGnGg_6S';
+
 const getSupabaseConfig = () => {
   const customUrl = localStorage.getItem('shibuya_supabase_url');
   const customKey = localStorage.getItem('shibuya_supabase_key');
 
-  const url = customUrl || import.meta.env?.VITE_SUPABASE_URL || '';
-  const key = customKey || import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
+  const url = customUrl || DEFAULT_URL;
+  const key = customKey || DEFAULT_KEY;
 
   return { url, key, isConfigured: Boolean(url && key) };
 };
@@ -14,7 +17,10 @@ const getSupabaseConfig = () => {
 const config = getSupabaseConfig();
 
 export const supabase = config.isConfigured
-  ? createClient(config.url, config.key)
+  ? createClient(config.url, config.key, {
+      auth: { persistSession: true },
+      realtime: { params: { eventsPerSecond: 10 } }
+    })
   : null;
 
 export const isSupabaseConnected = () => Boolean(supabase);
@@ -35,7 +41,7 @@ export const clearSupabaseConfig = () => {
   window.location.reload();
 };
 
-// Seed initial data for local storage mode
+// Initial Seed Data
 const INITIAL_SEED = {
   users: [
     { id: 'usr-1', nome: 'Dono Shibuya (Admin)', login: 'admin', senha_hash: 'admin123', perfil: 'ADMIN', ativo: true },
@@ -115,32 +121,51 @@ const INITIAL_SEED = {
   ]
 };
 
-// Initialize LocalStorage if empty
+// In-Memory Persistent Data Store & Cache
+let memoryStore = null;
+
 const getLocalData = () => {
+  if (memoryStore) return memoryStore;
+
   const data = localStorage.getItem('shibuya_db');
   if (!data) {
     localStorage.setItem('shibuya_db', JSON.stringify(INITIAL_SEED));
+    memoryStore = INITIAL_SEED;
     return INITIAL_SEED;
   }
   try {
-    return JSON.parse(data);
+    memoryStore = JSON.parse(data);
+    return memoryStore;
   } catch (e) {
     localStorage.setItem('shibuya_db', JSON.stringify(INITIAL_SEED));
+    memoryStore = INITIAL_SEED;
     return INITIAL_SEED;
   }
 };
 
 const saveLocalData = (data) => {
+  memoryStore = data;
   localStorage.setItem('shibuya_db', JSON.stringify(data));
 };
+
+// Listen to storage events for multi-tab sync
+window.addEventListener('storage', (e) => {
+  if (e.key === 'shibuya_db' && e.newValue) {
+    try {
+      memoryStore = JSON.parse(e.newValue);
+    } catch (err) {}
+  }
+});
 
 // DATA ACCESS LAYER
 export const db = {
   // CLIENTS
   async getClients() {
     if (supabase) {
-      const { data, error } = await supabase.from('cliente').select('*').order('criado_em', { ascending: false });
-      if (!error) return data;
+      try {
+        const { data, error } = await supabase.from('cliente').select('*').order('criado_em', { ascending: false });
+        if (!error && data && data.length > 0) return data;
+      } catch (e) {}
     }
     return getLocalData().clients;
   },
@@ -156,8 +181,9 @@ export const db = {
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('cliente').insert([newClient]).select();
-      if (!error && data) return data[0];
+      try {
+        await supabase.from('cliente').insert([newClient]);
+      } catch (e) {}
     }
 
     const local = getLocalData();
@@ -169,8 +195,10 @@ export const db = {
   // VEHICLES
   async getVehicles() {
     if (supabase) {
-      const { data, error } = await supabase.from('veiculo').select('*').order('criado_em', { ascending: false });
-      if (!error) return data;
+      try {
+        const { data, error } = await supabase.from('veiculo').select('*').order('criado_em', { ascending: false });
+        if (!error && data && data.length > 0) return data;
+      } catch (e) {}
     }
     return getLocalData().vehicles;
   },
@@ -188,8 +216,9 @@ export const db = {
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('veiculo').insert([newVehicle]).select();
-      if (!error && data) return data[0];
+      try {
+        await supabase.from('veiculo').insert([newVehicle]);
+      } catch (e) {}
     }
 
     const local = getLocalData();
@@ -201,8 +230,10 @@ export const db = {
   // PLATE VERIFICATION
   async getPlateVerifications() {
     if (supabase) {
-      const { data, error } = await supabase.from('verificacao_placa').select('*').order('data_hora', { ascending: false });
-      if (!error) return data;
+      try {
+        const { data, error } = await supabase.from('verificacao_placa').select('*').order('data_hora', { ascending: false });
+        if (!error && data && data.length > 0) return data;
+      } catch (e) {}
     }
     return getLocalData().plateVerifications;
   },
@@ -219,8 +250,9 @@ export const db = {
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('verificacao_placa').insert([record]).select();
-      if (!error && data) return data[0];
+      try {
+        await supabase.from('verificacao_placa').insert([record]);
+      } catch (e) {}
     }
 
     const local = getLocalData();
@@ -232,8 +264,10 @@ export const db = {
   // PARTS
   async getParts() {
     if (supabase) {
-      const { data, error } = await supabase.from('peca').select('*').order('nome', { ascending: true });
-      if (!error) return data;
+      try {
+        const { data, error } = await supabase.from('peca').select('*').order('nome', { ascending: true });
+        if (!error && data && data.length > 0) return data;
+      } catch (e) {}
     }
     return getLocalData().parts;
   },
@@ -252,8 +286,9 @@ export const db = {
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('peca').insert([newPart]).select();
-      if (!error && data) return data[0];
+      try {
+        await supabase.from('peca').insert([newPart]);
+      } catch (e) {}
     }
 
     const local = getLocalData();
@@ -262,11 +297,36 @@ export const db = {
     return newPart;
   },
 
+  async deletePart(partId) {
+    const local = getLocalData();
+    local.parts = local.parts.filter(p => p.id !== partId);
+    saveLocalData(local);
+    return true;
+  },
+
+  async updatePartPrice(partId, precoMin, precoMedio, precoMax, estoque) {
+    const local = getLocalData();
+    const pIndex = local.parts.findIndex(p => p.id === partId);
+    if (pIndex !== -1) {
+      local.parts[pIndex].preco_min = parseFloat(precoMin);
+      local.parts[pIndex].preco_medio = parseFloat(precoMedio);
+      local.parts[pIndex].preco_max = parseFloat(precoMax);
+      if (estoque !== undefined) {
+        local.parts[pIndex].estoque_atual = parseInt(estoque);
+      }
+      local.parts[pIndex].ultima_atualizacao = new Date().toISOString();
+      saveLocalData(local);
+    }
+    return true;
+  },
+
   // ORDERS (OS)
   async getOSList() {
     if (supabase) {
-      const { data, error } = await supabase.from('ordem_servico').select('*').order('criado_em', { ascending: false });
-      if (!error) return data;
+      try {
+        const { data, error } = await supabase.from('ordem_servico').select('*').order('criado_em', { ascending: false });
+        if (!error && data && data.length > 0) return data;
+      } catch (e) {}
     }
     return getLocalData().orders;
   },
@@ -304,8 +364,9 @@ export const db = {
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('ordem_servico').insert([newOS]).select();
-      if (!error && data) return data[0];
+      try {
+        await supabase.from('ordem_servico').insert([newOS]);
+      } catch (e) {}
     }
 
     local.orders.unshift(newOS);
@@ -376,10 +437,21 @@ export const db = {
     const os = local.orders[osIndex];
     if (!os.pecas) os.pecas = [];
 
+    const qtyNum = parseFloat(quantidade);
+
+    // Stock deduction & stock check
+    const partIndex = local.parts.findIndex(p => p.id === pecaId);
+    if (partIndex !== -1) {
+      if (local.parts[partIndex].estoque_atual < qtyNum) {
+        throw new Error(`Estoque insuficiente! Disponível: ${local.parts[partIndex].estoque_atual} un.`);
+      }
+      local.parts[partIndex].estoque_atual -= qtyNum;
+    }
+
     const newOsPeca = {
       id: 'ospec-' + Date.now(),
       peca_id: pecaId,
-      quantidade: parseFloat(quantidade),
+      quantidade: qtyNum,
       preco_unitario: parseFloat(precoUnitario),
       fornecedor: fornecedor || ''
     };
@@ -393,6 +465,38 @@ export const db = {
 
     local.orders[osIndex] = os;
     saveLocalData(local);
+    return os;
+  },
+
+  async removePartFromOS(osId, osPecaId) {
+    const local = getLocalData();
+    const osIndex = local.orders.findIndex(o => o.id === osId);
+    if (osIndex === -1) return null;
+
+    const os = local.orders[osIndex];
+    if (!os.pecas) return os;
+
+    const osPecaIndex = os.pecas.findIndex(p => p.id === osPecaId);
+    if (osPecaIndex !== -1) {
+      const removed = os.pecas[osPecaIndex];
+
+      // Restore stock
+      const partIndex = local.parts.findIndex(p => p.id === removed.peca_id);
+      if (partIndex !== -1) {
+        local.parts[partIndex].estoque_atual += removed.quantidade;
+      }
+
+      os.pecas.splice(osPecaIndex, 1);
+
+      // Recalculate Total
+      const pecasTotal = os.pecas.reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
+      os.valor_total = pecasTotal + parseFloat(os.mao_de_obra || 0);
+      os.atualizado_em = new Date().toISOString();
+
+      local.orders[osIndex] = os;
+      saveLocalData(local);
+    }
+
     return os;
   },
 
