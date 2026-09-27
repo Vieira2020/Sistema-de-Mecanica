@@ -148,6 +148,19 @@ const saveLocalData = (data) => {
   localStorage.setItem('shibuya_db', JSON.stringify(data));
 };
 
+// Real-time Postgres channel subscription
+if (supabase) {
+  try {
+    supabase
+      .channel('public:db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        // Clear in-memory cache to refetch from Supabase
+        memoryStore = null;
+      })
+      .subscribe();
+  } catch (err) {}
+}
+
 // Listen to storage events for multi-tab sync
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
