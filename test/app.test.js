@@ -94,6 +94,7 @@ async function runTests() {
   console.log('✅ Teste 8: Bloqueio de quantidade acima do estoque disponível OK');
 
   console.log('🎉 TODOS OS TESTES PASSARAM COM SUCESSO!');
+  process.exit(0);
 }
 
 runTests().catch((err) => {

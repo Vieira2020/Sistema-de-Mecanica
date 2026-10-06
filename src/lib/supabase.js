@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Default Supabase config or user-configured localStorage
-const DEFAULT_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://twi84i9kke71ow0lazuhxw.supabase.co';
+const DEFAULT_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://eyzlcycwhjdlmknxldsv.supabase.co';
 const DEFAULT_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Twi84I9kKe71Ow0lazUhxw_eGnGg_6S';
 
 const getSupabaseConfig = () => {
@@ -173,12 +173,19 @@ if (typeof window !== 'undefined') {
 }
 
 // DATA ACCESS LAYER
+const withTimeout = (promise, ms = 1500) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+  ]);
+};
+
 export const db = {
   // CLIENTS
   async getClients() {
     if (supabase) {
       try {
-        const { data, error } = await supabase.from('cliente').select('*').order('criado_em', { ascending: false });
+        const { data, error } = await withTimeout(supabase.from('cliente').select('*').order('criado_em', { ascending: false }));
         if (!error && data && data.length > 0) return data;
       } catch (e) {}
     }
@@ -211,7 +218,7 @@ export const db = {
   async getVehicles() {
     if (supabase) {
       try {
-        const { data, error } = await supabase.from('veiculo').select('*').order('criado_em', { ascending: false });
+        const { data, error } = await withTimeout(supabase.from('veiculo').select('*').order('criado_em', { ascending: false }));
         if (!error && data && data.length > 0) return data;
       } catch (e) {}
     }
@@ -246,7 +253,7 @@ export const db = {
   async getPlateVerifications() {
     if (supabase) {
       try {
-        const { data, error } = await supabase.from('verificacao_placa').select('*').order('data_hora', { ascending: false });
+        const { data, error } = await withTimeout(supabase.from('verificacao_placa').select('*').order('data_hora', { ascending: false }));
         if (!error && data && data.length > 0) return data;
       } catch (e) {}
     }
@@ -280,7 +287,7 @@ export const db = {
   async getParts() {
     if (supabase) {
       try {
-        const { data, error } = await supabase.from('peca').select('*').order('nome', { ascending: true });
+        const { data, error } = await withTimeout(supabase.from('peca').select('*').order('nome', { ascending: true }));
         if (!error && data && data.length > 0) return data;
       } catch (e) {}
     }
@@ -355,7 +362,7 @@ export const db = {
   async getOSList() {
     if (supabase) {
       try {
-        const { data, error } = await supabase.from('ordem_servico').select('*').order('criado_em', { ascending: false });
+        const { data, error } = await withTimeout(supabase.from('ordem_servico').select('*').order('criado_em', { ascending: false }));
         if (!error && data && data.length > 0) return data;
       } catch (e) {}
     }

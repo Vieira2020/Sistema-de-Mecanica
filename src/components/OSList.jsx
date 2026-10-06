@@ -66,12 +66,13 @@ export const OSList = ({ searchTerm, statusFilter, setStatusFilter, onSelectOS }
     const cli = clients.find((c) => c.id === os.cliente_id);
 
     // Search term check
+    const matchesKeywordPlaca = term === 'placa';
     const matchesNumber = String(os.numero).includes(term);
     const matchesPlate = veh?.placa.toLowerCase().includes(term);
     const matchesModel = veh?.modelo.toLowerCase().includes(term);
     const matchesClient = cli?.nome.toLowerCase().includes(term);
 
-    const matchesSearch = !term || matchesNumber || matchesPlate || matchesModel || matchesClient;
+    const matchesSearch = !term || matchesKeywordPlaca || matchesNumber || matchesPlate || matchesModel || matchesClient;
 
     // Status filter check
     if (!matchesSearch) return false;

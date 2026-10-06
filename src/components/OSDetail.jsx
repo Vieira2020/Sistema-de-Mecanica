@@ -154,6 +154,11 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
             <span className="text-xl font-bold font-mono text-white">
               R$ {parseFloat(os.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </span>
+            {isAssignedMechanic && (
+              <span className="block text-[10px] text-emerald-300 font-bold mt-0.5">
+                Comissão Mecânico (15%): R$ {(parseFloat(os.valor_total || 0) * 0.15).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            )}
           </div>
         ) : (
           <div className="bg-amber-950/80 px-3 py-1.5 rounded-lg text-amber-200 text-xs flex items-center gap-1.5 border border-amber-800">
