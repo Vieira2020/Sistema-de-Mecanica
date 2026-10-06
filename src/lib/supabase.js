@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Default Supabase config or user-configured localStorage
 const DEFAULT_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://eyzlcycwhjdlmknxldsv.supabase.co';
-const DEFAULT_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV5emxjeWN3aGpkbG1rbnhsZHN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNDM5NjIsImV4cCI6MjEwNDYxOTk2Mn0.UBxCQsZ_T2M3Zy1sdA9h7dpqScBzUjjsLRJh9Huszgo';
+const DEFAULT_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Twi84I9kKe71Ow0lazUhxw_eGnGg_6S';
 
 const getSupabaseConfig = () => {
   const customUrl = localStorage.getItem('shibuya_supabase_url');
