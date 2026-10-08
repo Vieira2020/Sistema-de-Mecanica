@@ -1,12 +1,42 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Keys from localStorage or Vite environment
-const getSupabaseConfig = () => {
-  const customUrl = localStorage.getItem('shibuya_supabase_url');
-  const customKey = localStorage.getItem('shibuya_supabase_key');
+// Default project configuration provided for Shibuya Motores
+const DEFAULT_SUPABASE_URL = 'https://txiifnwudneznudawglc.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'sb_publishable_7ySVIPOaOU3baOz-QyLaog_6EHumShw';
 
-  const url = customUrl || import.meta.env?.VITE_SUPABASE_URL || '';
-  const key = customKey || import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
+// Helper mapping for status values between frontend (UPPERCASE) and Supabase enum (lowercase)
+const STATUS_TO_REMOTE = {
+  'RECEBIDO': 'recebido',
+  'EM_DIAGNOSTICO': 'em_diagnostico',
+  'EM_FUNILARIA': 'em_funilaria',
+  'EM_MECANICA': 'em_mecanica',
+  'AGUARDANDO_PECA': 'aguardando_pecas',
+  'PRONTO': 'pronto_entrega',
+  'ENTREGUE': 'entregue'
+};
+
+const STATUS_FROM_REMOTE = {
+  'recebido': 'RECEBIDO',
+  'em_diagnostico': 'EM_DIAGNOSTICO',
+  'em_funilaria': 'EM_FUNILARIA',
+  'em_mecanica': 'EM_MECANICA',
+  'aguardando_pecas': 'AGUARDANDO_PECA',
+  'pronto_entrega': 'PRONTO',
+  'entregue': 'ENTREGUE'
+};
+
+// Keys from localStorage or Vite environment with default fallbacks
+const getSupabaseConfig = () => {
+  let customUrl = typeof localStorage !== 'undefined' ? localStorage.getItem('shibuya_supabase_url') : null;
+  let customKey = typeof localStorage !== 'undefined' ? localStorage.getItem('shibuya_supabase_key') : null;
+
+  let url = customUrl || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || DEFAULT_SUPABASE_URL;
+  let key = customKey || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || DEFAULT_SUPABASE_KEY;
+
+  if (url) {
+    // Normalize URL by removing /rest/v1 or trailing slashes if passed by user
+    url = url.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
+  }
 
   return { url, key, isConfigured: Boolean(url && key) };
 };
@@ -20,22 +50,30 @@ export const supabase = config.isConfigured
 export const isSupabaseConnected = () => Boolean(supabase);
 
 export const saveSupabaseConfig = (url, key) => {
-  if (url) localStorage.setItem('shibuya_supabase_url', url);
-  else localStorage.removeItem('shibuya_supabase_url');
+  if (typeof localStorage !== 'undefined') {
+    if (url) localStorage.setItem('shibuya_supabase_url', url.trim());
+    else localStorage.removeItem('shibuya_supabase_url');
 
-  if (key) localStorage.setItem('shibuya_supabase_key', key);
-  else localStorage.removeItem('shibuya_supabase_key');
+    if (key) localStorage.setItem('shibuya_supabase_key', key.trim());
+    else localStorage.removeItem('shibuya_supabase_key');
+  }
 
-  window.location.reload();
+  if (typeof window !== 'undefined') {
+    window.location.reload();
+  }
 };
 
 export const clearSupabaseConfig = () => {
-  localStorage.removeItem('shibuya_supabase_url');
-  localStorage.removeItem('shibuya_supabase_key');
-  window.location.reload();
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('shibuya_supabase_url');
+    localStorage.removeItem('shibuya_supabase_key');
+  }
+  if (typeof window !== 'undefined') {
+    window.location.reload();
+  }
 };
 
-// Seed initial data for local storage mode
+// Seed initial data for local storage mode fallback
 const INITIAL_SEED = {
   users: [
     { id: 'usr-1', nome: 'Dono Shibuya (Admin)', login: 'admin', senha_hash: 'admin123', perfil: 'ADMIN', ativo: true },
@@ -117,6 +155,7 @@ const INITIAL_SEED = {
 
 // Initialize LocalStorage if empty
 const getLocalData = () => {
+  if (typeof localStorage === 'undefined') return INITIAL_SEED;
   const data = localStorage.getItem('shibuya_db');
   if (!data) {
     localStorage.setItem('shibuya_db', JSON.stringify(INITIAL_SEED));
@@ -131,7 +170,9 @@ const getLocalData = () => {
 };
 
 const saveLocalData = (data) => {
-  localStorage.setItem('shibuya_db', JSON.stringify(data));
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('shibuya_db', JSON.stringify(data));
+  }
 };
 
 // DATA ACCESS LAYER
@@ -139,13 +180,32 @@ export const db = {
   // CLIENTS
   async getClients() {
     if (supabase) {
-      const { data, error } = await supabase.from('cliente').select('*').order('criado_em', { ascending: false });
-      if (!error) return data;
+      try {
+        const { data, error } = await supabase.from('clientes').select('*').order('criado_em', { ascending: false });
+        if (!error && data) return data;
+      } catch (e) {
+        // Fallback to local
+      }
     }
     return getLocalData().clients;
   },
 
   async addClient(clientData) {
+    if (supabase) {
+      try {
+        const payload = {
+          nome: clientData.nome,
+          telefone: clientData.telefone,
+          cpf: clientData.cpf || null,
+          endereco: clientData.endereco || null
+        };
+        const { data, error } = await supabase.from('clientes').insert([payload]).select();
+        if (!error && data && data.length > 0) return data[0];
+      } catch (e) {
+        // Fallback to local
+      }
+    }
+
     const newClient = {
       id: 'cli-' + Date.now(),
       nome: clientData.nome,
@@ -154,12 +214,6 @@ export const db = {
       endereco: clientData.endereco || null,
       criado_em: new Date().toISOString()
     };
-
-    if (supabase) {
-      const { data, error } = await supabase.from('cliente').insert([newClient]).select();
-      if (!error && data) return data[0];
-    }
-
     const local = getLocalData();
     local.clients.unshift(newClient);
     saveLocalData(local);
@@ -169,28 +223,45 @@ export const db = {
   // VEHICLES
   async getVehicles() {
     if (supabase) {
-      const { data, error } = await supabase.from('veiculo').select('*').order('criado_em', { ascending: false });
-      if (!error) return data;
+      try {
+        const { data, error } = await supabase.from('veiculos').select('*').order('criado_em', { ascending: false });
+        if (!error && data) return data;
+      } catch (e) {
+        // Fallback
+      }
     }
     return getLocalData().vehicles;
   },
 
   async addVehicle(vehicleData) {
+    const cleanPlaca = vehicleData.placa ? vehicleData.placa.toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+    if (supabase) {
+      try {
+        const payload = {
+          cliente_id: vehicleData.cliente_id,
+          placa: cleanPlaca,
+          modelo: vehicleData.modelo,
+          cor: vehicleData.cor,
+          ano: vehicleData.ano ? parseInt(vehicleData.ano) : null,
+          observacoes: vehicleData.observacoes || ''
+        };
+        const { data, error } = await supabase.from('veiculos').insert([payload]).select();
+        if (!error && data && data.length > 0) return data[0];
+      } catch (e) {
+        // Fallback
+      }
+    }
+
     const newVehicle = {
       id: 'vec-' + Date.now(),
       cliente_id: vehicleData.cliente_id,
-      placa: vehicleData.placa.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+      placa: cleanPlaca,
       modelo: vehicleData.modelo,
       cor: vehicleData.cor,
       ano: vehicleData.ano ? parseInt(vehicleData.ano) : null,
       observacoes: vehicleData.observacoes || '',
       criado_em: new Date().toISOString()
     };
-
-    if (supabase) {
-      const { data, error } = await supabase.from('veiculo').insert([newVehicle]).select();
-      if (!error && data) return data[0];
-    }
 
     const local = getLocalData();
     local.vehicles.unshift(newVehicle);
@@ -201,13 +272,45 @@ export const db = {
   // PLATE VERIFICATION
   async getPlateVerifications() {
     if (supabase) {
-      const { data, error } = await supabase.from('verificacao_placa').select('*').order('data_hora', { ascending: false });
-      if (!error) return data;
+      try {
+        const { data, error } = await supabase.from('verificacoes_placa').select('*').order('data_hora', { ascending: false });
+        if (!error && data) {
+          return data.map(item => ({
+            ...item,
+            responsavel_id: item.usuario_id || item.responsavel_id,
+            status_consulta: item.status_consulta || 'SEM_RESTRICAO'
+          }));
+        }
+      } catch (e) {
+        // Fallback
+      }
     }
     return getLocalData().plateVerifications;
   },
 
   async addPlateVerification(verification) {
+    if (supabase) {
+      try {
+        const payload = {
+          veiculo_id: verification.veiculo_id,
+          os_id: verification.os_id || null,
+          usuario_id: verification.responsavel_id || verification.usuario_id,
+          observacao: verification.observacao || 'Verificação efetuada.'
+        };
+        const { data, error } = await supabase.from('verificacoes_placa').insert([payload]).select();
+        if (!error && data && data.length > 0) {
+          const item = data[0];
+          return {
+            ...item,
+            responsavel_id: item.usuario_id || verification.responsavel_id,
+            status_consulta: 'SEM_RESTRICAO'
+          };
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+
     const record = {
       id: 'ver-' + Date.now(),
       veiculo_id: verification.veiculo_id,
@@ -218,11 +321,6 @@ export const db = {
       observacao: verification.observacao || 'Verificação efetuada.'
     };
 
-    if (supabase) {
-      const { data, error } = await supabase.from('verificacao_placa').insert([record]).select();
-      if (!error && data) return data[0];
-    }
-
     const local = getLocalData();
     local.plateVerifications.unshift(record);
     saveLocalData(local);
@@ -232,13 +330,46 @@ export const db = {
   // PARTS
   async getParts() {
     if (supabase) {
-      const { data, error } = await supabase.from('peca').select('*').order('nome', { ascending: true });
-      if (!error) return data;
+      try {
+        const { data, error } = await supabase.from('pecas_catalogo').select('*').order('nome', { ascending: true });
+        if (!error && data) {
+          return data.map(p => ({
+            ...p,
+            ultima_atualizacao: p.atualizado_em || p.ultima_atualizacao || new Date().toISOString()
+          }));
+        }
+      } catch (e) {
+        // Fallback
+      }
     }
     return getLocalData().parts;
   },
 
   async addPart(partData) {
+    if (supabase) {
+      try {
+        const payload = {
+          codigo_interno: partData.codigo_interno,
+          nome: partData.nome,
+          modelo_compativel: partData.modelo_compativel || '',
+          preco_min: parseFloat(partData.preco_min || 0),
+          preco_max: parseFloat(partData.preco_max || 0),
+          preco_medio: parseFloat(partData.preco_medio || 0)
+        };
+        const { data, error } = await supabase.from('pecas_catalogo').insert([payload]).select();
+        if (!error && data && data.length > 0) {
+          const item = data[0];
+          return {
+            ...item,
+            estoque_atual: parseInt(partData.estoque_atual || 0),
+            ultima_atualizacao: item.atualizado_em || new Date().toISOString()
+          };
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+
     const newPart = {
       id: 'pec-' + Date.now(),
       codigo_interno: partData.codigo_interno,
@@ -251,11 +382,6 @@ export const db = {
       ultima_atualizacao: new Date().toISOString()
     };
 
-    if (supabase) {
-      const { data, error } = await supabase.from('peca').insert([newPart]).select();
-      if (!error && data) return data[0];
-    }
-
     const local = getLocalData();
     local.parts.push(newPart);
     saveLocalData(local);
@@ -265,13 +391,152 @@ export const db = {
   // ORDERS (OS)
   async getOSList() {
     if (supabase) {
-      const { data, error } = await supabase.from('ordem_servico').select('*').order('criado_em', { ascending: false });
-      if (!error) return data;
+      try {
+        const { data: osData, error } = await supabase.from('ordens_servico').select('*').order('criado_em', { ascending: false });
+        if (!error && osData) {
+          // Load parts and updates for orders in parallel
+          const [pecasRes, attRes] = await Promise.all([
+            supabase.from('os_pecas').select('*'),
+            supabase.from('os_atualizacoes').select('*').order('criado_em', { ascending: false })
+          ]);
+
+          const pecasByOS = {};
+          if (pecasRes.data) {
+            pecasRes.data.forEach(p => {
+              if (!pecasByOS[p.os_id]) pecasByOS[p.os_id] = [];
+              pecasByOS[p.os_id].push({
+                id: p.id,
+                peca_id: p.peca_id,
+                quantidade: p.quantidade,
+                preco_unitario: p.preco_unitario,
+                fornecedor: p.fornecedor || ''
+              });
+            });
+          }
+
+          const timelineByOS = {};
+          if (attRes.data) {
+            attRes.data.forEach(a => {
+              if (!timelineByOS[a.os_id]) timelineByOS[a.os_id] = [];
+              timelineByOS[a.os_id].push({
+                id: a.id,
+                autor_id: a.usuario_id,
+                data_hora: a.criado_em,
+                status_anterior: STATUS_FROM_REMOTE[a.status_anterior] || a.status_anterior,
+                status_novo: STATUS_FROM_REMOTE[a.status_novo] || a.status_novo,
+                observacao: a.observacao
+              });
+            });
+          }
+
+          // Merge local orders that might be stored locally if remote write failed
+          const localOrders = getLocalData().orders;
+          const remoteIds = new Set(osData.map(o => o.id));
+
+          const mergedRemote = osData.map(os => {
+            const localMatch = localOrders.find(l => l.id === os.id);
+            const currentStatus = localMatch ? localMatch.status : (STATUS_FROM_REMOTE[os.status] || os.status);
+            const currentTimeline = (localMatch && localMatch.timeline && localMatch.timeline.length > (timelineByOS[os.id] || []).length)
+              ? localMatch.timeline
+              : (timelineByOS[os.id] || []);
+            const currentPecas = (localMatch && localMatch.pecas && localMatch.pecas.length > (pecasByOS[os.id] || []).length)
+              ? localMatch.pecas
+              : (pecasByOS[os.id] || []);
+
+            const pecasTotal = currentPecas.reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
+            const maoDeObra = parseFloat(os.valor_mao_obra || os.mao_de_obra || 0);
+
+            return {
+              ...os,
+              responsavel_id: os.criado_por,
+              tipo_servico: os.tipo_servico || 'MECANICA',
+              mao_de_obra: maoDeObra,
+              valor_total: (localMatch && localMatch.valor_total) ? localMatch.valor_total : (pecasTotal + maoDeObra),
+              status: currentStatus,
+              pecas: currentPecas,
+              timeline: currentTimeline
+            };
+          });
+
+          // Add any local-only orders
+          const localOnly = localOrders.filter(l => !remoteIds.has(l.id));
+          return [...mergedRemote, ...localOnly];
+        }
+      } catch (e) {
+        // Fallback
+      }
     }
     return getLocalData().orders;
   },
 
   async createOS(osData, user) {
+    if (supabase) {
+      try {
+        const osPayload = {
+          cliente_id: osData.cliente_id,
+          veiculo_id: osData.veiculo_id,
+          valor_mao_obra: parseFloat(osData.mao_de_obra || 0),
+          valor_final: parseFloat(osData.mao_de_obra || 0),
+          status: STATUS_TO_REMOTE['RECEBIDO'] || 'recebido',
+          criado_por: user.id
+        };
+        if (osData.previsao_entrega) {
+          osPayload.previsao_entrega = osData.previsao_entrega;
+        }
+
+        const { data: osResult, error: osErr } = await supabase.from('ordens_servico').insert([osPayload]).select();
+        if (!osErr && osResult && osResult.length > 0) {
+          const newOs = osResult[0];
+
+          // Insert initial timeline entry
+          const attPayload = {
+            os_id: newOs.id,
+            usuario_id: user.id,
+            status_anterior: null,
+            status_novo: STATUS_TO_REMOTE['RECEBIDO'] || 'recebido',
+            observacao: osData.observacao_inicial || 'OS criada e veículo recebido.'
+          };
+          const { data: attData } = await supabase.from('os_atualizacoes').insert([attPayload]).select();
+
+          const initialTimeline = attData && attData.length > 0 ? [{
+            id: attData[0].id,
+            autor_id: user.id,
+            data_hora: attData[0].criado_em,
+            status_anterior: null,
+            status_novo: 'RECEBIDO',
+            observacao: attPayload.observacao
+          }] : [{
+            id: 'att-' + Date.now(),
+            autor_id: user.id,
+            data_hora: new Date().toISOString(),
+            status_anterior: null,
+            status_novo: 'RECEBIDO',
+            observacao: osData.observacao_inicial || 'OS criada e veículo recebido.'
+          }];
+
+          const fullOs = {
+            ...newOs,
+            responsavel_id: user.id,
+            tipo_servico: osData.tipo_servico || 'MECANICA',
+            mao_de_obra: parseFloat(newOs.valor_mao_obra || 0),
+            valor_total: parseFloat(newOs.valor_final || 0),
+            status: 'RECEBIDO',
+            pecas: [],
+            timeline: initialTimeline
+          };
+
+          // Save copy to local storage as well to keep sync
+          const local = getLocalData();
+          local.orders.unshift(fullOs);
+          saveLocalData(local);
+
+          return fullOs;
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+
     const local = getLocalData();
     const nextNum = local.orders.length > 0 ? Math.max(...local.orders.map(o => o.numero || 1000)) + 1 : 1001;
 
@@ -303,100 +568,185 @@ export const db = {
       ]
     };
 
-    if (supabase) {
-      const { data, error } = await supabase.from('ordem_servico').insert([newOS]).select();
-      if (!error && data) return data[0];
-    }
-
     local.orders.unshift(newOS);
     saveLocalData(local);
     return newOS;
   },
 
   async updateOSStatus(osId, newStatus, observacao, user) {
-    const local = getLocalData();
-    const osIndex = local.orders.findIndex(o => o.id === osId);
-    if (osIndex === -1) return null;
+    if (supabase) {
+      const remoteStatus = STATUS_TO_REMOTE[newStatus] || newStatus.toLowerCase();
+      const updateData = {
+        status: remoteStatus,
+        atualizado_em: new Date().toISOString()
+      };
+      if (newStatus === 'ENTREGUE') {
+        updateData.data_entrega = new Date().toISOString();
+      }
 
-    const os = local.orders[osIndex];
-    const prevStatus = os.status;
-    os.status = newStatus;
-    os.atualizado_em = new Date().toISOString();
+      await supabase.from('ordens_servico').update(updateData).eq('id', osId);
 
-    if (newStatus === 'ENTREGUE') {
-      os.entregue_em = new Date().toISOString();
+      const attPayload = {
+        os_id: osId,
+        usuario_id: user.id,
+        status_novo: remoteStatus,
+        observacao: observacao || `Status alterado para ${newStatus}`
+      };
+      await supabase.from('os_atualizacoes').insert([attPayload]);
     }
 
-    const timelineEntry = {
-      id: 'att-' + Date.now(),
-      autor_id: user.id,
-      data_hora: new Date().toISOString(),
-      status_anterior: prevStatus,
-      status_novo: newStatus,
-      observacao: observacao || `Status alterado de ${prevStatus} para ${newStatus}`
-    };
+    // Always update local storage state as well
+    const local = getLocalData();
+    const osIndex = local.orders.findIndex(o => o.id === osId);
+    let updatedOSItem = null;
 
-    if (!os.timeline) os.timeline = [];
-    os.timeline.unshift(timelineEntry);
+    if (osIndex !== -1) {
+      const os = local.orders[osIndex];
+      const prevStatus = os.status;
+      os.status = newStatus;
+      os.atualizado_em = new Date().toISOString();
 
-    local.orders[osIndex] = os;
-    saveLocalData(local);
-    return os;
+      if (newStatus === 'ENTREGUE') {
+        os.entregue_em = new Date().toISOString();
+      }
+
+      const timelineEntry = {
+        id: 'att-' + Date.now(),
+        autor_id: user.id,
+        data_hora: new Date().toISOString(),
+        status_anterior: prevStatus,
+        status_novo: newStatus,
+        observacao: observacao || `Status alterado de ${prevStatus} para ${newStatus}`
+      };
+
+      if (!os.timeline) os.timeline = [];
+      os.timeline.unshift(timelineEntry);
+
+      local.orders[osIndex] = os;
+      saveLocalData(local);
+      updatedOSItem = os;
+    }
+
+    const osList = await this.getOSList();
+    return osList.find(o => o.id === osId) || updatedOSItem;
   },
 
   async addOSTimelineNote(osId, observacao, user) {
+    if (supabase) {
+      const attPayload = {
+        os_id: osId,
+        usuario_id: user.id,
+        observacao: observacao
+      };
+      await supabase.from('os_atualizacoes').insert([attPayload]);
+    }
+
     const local = getLocalData();
     const osIndex = local.orders.findIndex(o => o.id === osId);
-    if (osIndex === -1) return null;
+    let updatedOSItem = null;
 
-    const os = local.orders[osIndex];
-    const timelineEntry = {
-      id: 'att-' + Date.now(),
-      autor_id: user.id,
-      data_hora: new Date().toISOString(),
-      status_anterior: os.status,
-      status_novo: os.status,
-      observacao: observacao
-    };
+    if (osIndex !== -1) {
+      const os = local.orders[osIndex];
+      const timelineEntry = {
+        id: 'att-' + Date.now(),
+        autor_id: user.id,
+        data_hora: new Date().toISOString(),
+        status_anterior: os.status,
+        status_novo: os.status,
+        observacao: observacao
+      };
 
-    if (!os.timeline) os.timeline = [];
-    os.timeline.unshift(timelineEntry);
-    os.atualizado_em = new Date().toISOString();
+      if (!os.timeline) os.timeline = [];
+      os.timeline.unshift(timelineEntry);
+      os.atualizado_em = new Date().toISOString();
 
-    local.orders[osIndex] = os;
-    saveLocalData(local);
-    return os;
+      local.orders[osIndex] = os;
+      saveLocalData(local);
+      updatedOSItem = os;
+    }
+
+    const osList = await this.getOSList();
+    return osList.find(o => o.id === osId) || updatedOSItem;
   },
 
   async addPartToOS(osId, pecaId, quantidade, precoUnitario, fornecedor, user) {
+    if (supabase) {
+      try {
+        const osPecaPayload = {
+          os_id: osId,
+          peca_id: pecaId,
+          quantidade: parseFloat(quantidade),
+          preco_unitario: parseFloat(precoUnitario),
+          fornecedor: fornecedor || ''
+        };
+        await supabase.from('os_pecas').insert([osPecaPayload]);
+
+        const { data: pecas } = await supabase.from('os_pecas').select('*').eq('os_id', osId);
+        const pecasTotal = pecas ? pecas.reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0) : 0;
+
+        const { data: osData } = await supabase.from('ordens_servico').select('valor_mao_obra').eq('id', osId).single();
+        const maoDeObra = osData ? parseFloat(osData.valor_mao_obra || 0) : 0;
+        const novoTotal = pecasTotal + maoDeObra;
+
+        await supabase.from('ordens_servico').update({
+          valor_pecas: pecasTotal,
+          valor_final: novoTotal,
+          atualizado_em: new Date().toISOString()
+        }).eq('id', osId);
+      } catch (e) {
+        // Fallback
+      }
+    }
+
     const local = getLocalData();
     const osIndex = local.orders.findIndex(o => o.id === osId);
-    if (osIndex === -1) return null;
+    let updatedOSItem = null;
 
-    const os = local.orders[osIndex];
-    if (!os.pecas) os.pecas = [];
+    if (osIndex !== -1) {
+      const os = local.orders[osIndex];
+      if (!os.pecas) os.pecas = [];
 
-    const newOsPeca = {
-      id: 'ospec-' + Date.now(),
-      peca_id: pecaId,
-      quantidade: parseFloat(quantidade),
-      preco_unitario: parseFloat(precoUnitario),
-      fornecedor: fornecedor || ''
-    };
+      const newOsPeca = {
+        id: 'ospec-' + Date.now(),
+        peca_id: pecaId,
+        quantidade: parseFloat(quantidade),
+        preco_unitario: parseFloat(precoUnitario),
+        fornecedor: fornecedor || ''
+      };
 
-    os.pecas.push(newOsPeca);
+      os.pecas.push(newOsPeca);
 
-    // Recalculate Total
-    const pecasTotal = os.pecas.reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
-    os.valor_total = pecasTotal + parseFloat(os.mao_de_obra || 0);
-    os.atualizado_em = new Date().toISOString();
+      const pecasTotal = os.pecas.reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
+      os.valor_total = pecasTotal + parseFloat(os.mao_de_obra || 0);
+      os.atualizado_em = new Date().toISOString();
 
-    local.orders[osIndex] = os;
-    saveLocalData(local);
-    return os;
+      local.orders[osIndex] = os;
+      saveLocalData(local);
+      updatedOSItem = os;
+    }
+
+    const osList = await this.getOSList();
+    return osList.find(o => o.id === osId) || updatedOSItem;
   },
 
   async getUsers() {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('usuarios').select('*').eq('ativo', true);
+        if (!error && data && data.length > 0) {
+          return data.map(u => ({
+            id: u.id,
+            nome: u.nome,
+            login: u.login,
+            senha_hash: u.senha_hash,
+            perfil: u.perfil === 'administrador' ? 'ADMIN' : u.perfil === 'mecanico' ? 'MECANICO' : (u.perfil || '').toUpperCase(),
+            ativo: u.ativo
+          }));
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
     return getLocalData().users;
   }
 };
