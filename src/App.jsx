@@ -9,6 +9,7 @@ import { ClientsVehicles } from './components/ClientsVehicles';
 import { PlateVerification } from './components/PlateVerification';
 import { PartsCatalog } from './components/PartsCatalog';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
+import { UserManagementModal } from './components/UserManagementModal';
 import { db } from './lib/supabase';
 
 export const AppContent = () => {
@@ -17,7 +18,10 @@ export const AppContent = () => {
   const [selectedOSId, setSelectedOSId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('EM_ABERTO');
+
+  // Modals state
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
 
   // Loaded relational data for OS Detail view
   const [currentOS, setCurrentOS] = useState(null);
@@ -60,13 +64,18 @@ export const AppContent = () => {
   }
 
   const handleSelectStatusFilterFromDash = (status) => {
-    setStatusFilter(status);
+    setStatusFilter(status || 'EM_ABERTO');
     setActiveTab('orders');
     setSelectedOSId(null);
   };
 
   const handleOpenOSFromDash = (osId) => {
-    setSelectedOSId(osId);
+    if (osId) {
+      setSelectedOSId(osId);
+    } else {
+      setActiveTab('orders');
+      setSelectedOSId(null);
+    }
   };
 
   return (
@@ -80,21 +89,25 @@ export const AppContent = () => {
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         openSettings={() => setShowConfigModal(true)}
+        openUserManagement={() => setShowUserModal(true)}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Main Container with fluid tab transition (ALTERAÇÃO #18) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 transition-all duration-300 ease-in-out">
         {selectedOSId && currentOS ? (
-          <OSDetail
-            os={currentOS}
-            clients={clients}
-            vehicles={vehicles}
-            parts={parts}
-            users={users}
-            onBack={() => setSelectedOSId(null)}
-            onRefresh={() => loadOSDetail(selectedOSId)}
-          />
+          <div className="animate-fadeIn">
+            <OSDetail
+              os={currentOS}
+              clients={clients}
+              vehicles={vehicles}
+              parts={parts}
+              users={users}
+              onBack={() => setSelectedOSId(null)}
+              onRefresh={() => loadOSDetail(selectedOSId)}
+            />
+          </div>
         ) : (
-          <>
+          <div className="animate-fadeIn">
             {activeTab === 'dashboard' && isAdmin && (
               <Dashboard
                 onSelectStatusFilter={handleSelectStatusFilterFromDash}
@@ -123,23 +136,30 @@ export const AppContent = () => {
             {activeTab === 'plates' && isAdmin && <PlateVerification />}
 
             {activeTab === 'parts' && isAdmin && (
-              <PartsCatalog searchTerm={searchTerm} />
+              <PartsCatalog
+                searchTerm={searchTerm}
+                onNavigateToParts={() => setActiveTab('parts')}
+              />
             )}
-          </>
+          </div>
         )}
       </main>
 
       <footer className="bg-[#032326] text-gray-400 text-xs py-4 border-t border-emerald-900 mt-8 text-center">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2 font-sans">
           <p>© {new Date().getFullYear()} Shibuya Motores — Bragança Paulista, SP</p>
           <p className="font-mono text-gray-300">
-            1ª Versão — Sistema Integrado de Mecânica e Funilaria
+            Sistema Integrado de Mecânica e Funilaria — Conectado ao Supabase
           </p>
         </div>
       </footer>
 
       {showConfigModal && (
         <SupabaseConfigModal onClose={() => setShowConfigModal(false)} />
+      )}
+
+      {showUserModal && (
+        <UserManagementModal onClose={() => setShowUserModal(false)} />
       )}
     </div>
   );
