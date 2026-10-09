@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/supabase';
-import { Wrench, Clock, DollarSign, Package, AlertTriangle, CheckCircle2, ChevronRight, Hammer, ShieldCheck } from 'lucide-react';
+import { Wrench, Clock, DollarSign, Package, AlertTriangle, CheckCircle2, ChevronRight, Hammer, ShieldCheck, Eye } from 'lucide-react';
 
 export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
   const [orders, setOrders] = useState([]);
   const [parts, setParts] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Alteração #9: Hover Preview State for Cards
+  const [hoveredStatus, setHoveredStatus] = useState(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -33,15 +36,15 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
   const totalMaoDeObra = orders.reduce((sum, o) => sum + (parseFloat(o.mao_de_obra) || 0), 0);
 
   const statusCounts = {
-    RECEBIDO: orders.filter((o) => o.status === 'RECEBIDO').length,
-    EM_DIAGNOSTICO: orders.filter((o) => o.status === 'EM_DIAGNOSTICO').length,
-    AGUARDANDO_APROVACAO: orders.filter((o) => o.status === 'AGUARDANDO_APROVACAO').length,
-    AGUARDANDO_PECAS: orders.filter((o) => o.status === 'AGUARDANDO_PECAS').length,
-    EM_FUNILARIA: orders.filter((o) => o.status === 'EM_FUNILARIA').length,
-    EM_MECANICA: orders.filter((o) => o.status === 'EM_MECANICA').length,
-    TESTE_QUALIDADE: orders.filter((o) => o.status === 'TESTE_QUALIDADE').length,
-    PRONTO_PARA_ENTREGA: orders.filter((o) => o.status === 'PRONTO_PARA_ENTREGA').length,
-    ENTREGUE: orders.filter((o) => o.status === 'ENTREGUE').length
+    RECEBIDO: orders.filter((o) => o.status === 'RECEBIDO'),
+    EM_DIAGNOSTICO: orders.filter((o) => o.status === 'EM_DIAGNOSTICO'),
+    AGUARDANDO_APROVACAO: orders.filter((o) => o.status === 'AGUARDANDO_APROVACAO'),
+    AGUARDANDO_PECAS: orders.filter((o) => o.status === 'AGUARDANDO_PECAS'),
+    EM_FUNILARIA: orders.filter((o) => o.status === 'EM_FUNILARIA'),
+    EM_MECANICA: orders.filter((o) => o.status === 'EM_MECANICA'),
+    TESTE_QUALIDADE: orders.filter((o) => o.status === 'TESTE_QUALIDADE'),
+    PRONTO_PARA_ENTREGA: orders.filter((o) => o.status === 'PRONTO_PARA_ENTREGA'),
+    ENTREGUE: orders.filter((o) => o.status === 'ENTREGUE')
   };
 
   if (loading) {
@@ -53,8 +56,13 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
     );
   }
 
+  const getHoverPreviewOrders = (statusKey) => {
+    const osArr = statusCounts[statusKey] || [];
+    return osArr.slice(0, 3);
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       {/* Top Banner */}
       <div className="bg-[#032326] text-white p-6 rounded-xl shadow-md border-l-8 border-[#8C4580] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -77,7 +85,7 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Open OS */}
         <div
-          onClick={() => onNavigateToOS && onNavigateToOS()}
+          onClick={() => onSelectStatusFilter && onSelectStatusFilter('EM_ABERTO')}
           className="bg-[#032326] text-white p-5 rounded-xl shadow-md border-t-4 border-[#308C50] cursor-pointer hover:scale-[1.02] transition"
         >
           <div className="flex justify-between items-center mb-2">
@@ -141,44 +149,72 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
         </div>
       </div>
 
-      {/* Vehicles Status Quick Breakdown */}
-      <div className="bg-[#125938] text-white p-6 rounded-xl shadow-md">
+      {/* Vehicles Status Quick Breakdown & Hover Preview (Alteração #9) */}
+      <div className="bg-[#125938] text-white p-6 rounded-xl shadow-md relative">
         <div className="flex justify-between items-center mb-4">
           <div>
             <h3 className="text-lg font-bold font-serif text-white flex items-center gap-2">
               <Hammer className="w-5 h-5 text-[#8C4580]" />
-              Onde estão os veículos agora? (Acompanhamento em Tempo Real)
+              Onde estão os veículos agora? (Acompanhamento Interativo)
             </h3>
             <p className="text-xs text-emerald-100">
-              Clique em um dos setores para filtrar a lista de veículos e Ordens de Serviço.
+              Passe o mouse sobre os cartões para ver uma prévia rápida dos veículos sem precisar mudar de página.
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {[
-            { id: 'EM_MECANICA', title: 'Em Mecânica', count: statusCounts.EM_MECANICA, color: 'bg-emerald-900 border-emerald-600' },
-            { id: 'EM_FUNILARIA', title: 'Em Funilaria', count: statusCounts.EM_FUNILARIA, color: 'bg-teal-900 border-teal-600' },
-            { id: 'EM_DIAGNOSTICO', title: 'Em Diagnóstico', count: statusCounts.EM_DIAGNOSTICO, color: 'bg-cyan-900 border-cyan-600' },
-            { id: 'AGUARDANDO_PECAS', title: 'Aguardando Peças', count: statusCounts.AGUARDANDO_PECAS, color: 'bg-amber-900 border-amber-600' },
-            { id: 'TESTE_QUALIDADE', title: 'Teste / Qualidade', count: statusCounts.TESTE_QUALIDADE, color: 'bg-purple-900 border-purple-600' },
-            { id: 'PRONTO_PARA_ENTREGA', title: 'Pronto p/ Entrega', count: statusCounts.PRONTO_PARA_ENTREGA, color: 'bg-green-900 border-green-600' },
-            { id: 'RECEBIDO', title: 'Recebido', count: statusCounts.RECEBIDO, color: 'bg-slate-900 border-slate-600' },
-            { id: 'AGUARDANDO_APROVACAO', title: 'Aguardando Aprov.', count: statusCounts.AGUARDANDO_APROVACAO, color: 'bg-orange-900 border-orange-600' },
-            { id: 'ENTREGUE', title: 'Entregues', count: statusCounts.ENTREGUE, color: 'bg-gray-800 border-gray-600' },
-          ].map((item) => (
-            <div
-              key={item.id}
-              onClick={() => onSelectStatusFilter && onSelectStatusFilter(item.id)}
-              className={`p-3 rounded-lg border text-white cursor-pointer hover:opacity-90 transition ${item.color}`}
-            >
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-sans text-gray-200">{item.title}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+            { id: 'EM_MECANICA', title: 'Em Mecânica', color: 'bg-emerald-900 border-emerald-600' },
+            { id: 'EM_FUNILARIA', title: 'Em Funilaria', color: 'bg-teal-900 border-teal-600' },
+            { id: 'EM_DIAGNOSTICO', title: 'Em Diagnóstico', color: 'bg-cyan-900 border-cyan-600' },
+            { id: 'AGUARDANDO_PECAS', title: 'Aguardando Peças', color: 'bg-amber-900 border-amber-600' },
+            { id: 'TESTE_QUALIDADE', title: 'Teste / Qualidade', color: 'bg-purple-900 border-purple-600' },
+            { id: 'PRONTO_PARA_ENTREGA', title: 'Pronto p/ Entrega', color: 'bg-green-900 border-green-600' },
+            { id: 'RECEBIDO', title: 'Recebido', color: 'bg-slate-900 border-slate-600' },
+            { id: 'AGUARDANDO_APROVACAO', title: 'Aguardando Aprov.', color: 'bg-orange-900 border-orange-600' },
+            { id: 'ENTREGUE', title: 'Entregues', color: 'bg-gray-800 border-gray-600' },
+          ].map((item) => {
+            const count = (statusCounts[item.id] || []).length;
+            return (
+              <div
+                key={item.id}
+                onMouseEnter={() => setHoveredStatus(item.id)}
+                onMouseLeave={() => setHoveredStatus(null)}
+                onClick={() => onSelectStatusFilter && onSelectStatusFilter(item.id)}
+                className={`p-3 rounded-lg border text-white cursor-pointer hover:opacity-95 transition relative ${item.color}`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-sans text-gray-200">{item.title}</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                </div>
+                <p className="text-2xl font-bold font-mono mt-1">{count}</p>
+
+                {/* Alteração #9: Hover popover preview */}
+                {hoveredStatus === item.id && count > 0 && (
+                  <div className="absolute left-0 bottom-full mb-2 w-64 bg-[#032326] text-white p-3 rounded-lg shadow-2xl border border-emerald-500 z-50 text-xs pointer-events-none">
+                    <p className="font-bold border-b border-emerald-800 pb-1 mb-1 text-emerald-300 flex items-center gap-1">
+                      <Eye className="w-3.5 h-3.5" /> Prévia: {item.title} ({count})
+                    </p>
+                    <div className="space-y-1">
+                      {getHoverPreviewOrders(item.id).map((o) => {
+                        const veh = vehicles.find((v) => v.id === o.veiculo_id);
+                        return (
+                          <div key={o.id} className="text-[11px] leading-tight">
+                            <span className="font-mono font-bold text-amber-300">OS #{o.numero}</span> -{' '}
+                            <span className="font-bold">{veh?.placa || 'PLACA'}</span> ({veh?.modelo || 'Veículo'})
+                          </div>
+                        );
+                      })}
+                      {count > 3 && (
+                        <p className="text-[10px] text-gray-400 italic pt-0.5">+ {count - 3} mais...</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-              <p className="text-2xl font-bold font-mono mt-1">{item.count}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

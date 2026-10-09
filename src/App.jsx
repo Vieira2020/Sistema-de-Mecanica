@@ -9,6 +9,7 @@ import { ClientsVehicles } from './components/ClientsVehicles';
 import { PlateVerification } from './components/PlateVerification';
 import { PartsCatalog } from './components/PartsCatalog';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
+import { UserManagementModal } from './components/UserManagementModal';
 import { db } from './lib/supabase';
 
 export const AppContent = () => {
@@ -18,6 +19,7 @@ export const AppContent = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('EM_ABERTO');
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
 
   // Loaded relational data for OS Detail view
   const [currentOS, setCurrentOS] = useState(null);
@@ -80,6 +82,7 @@ export const AppContent = () => {
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         openSettings={() => setShowConfigModal(true)}
+        openUserManagement={() => setShowUserModal(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -140,6 +143,15 @@ export const AppContent = () => {
 
       {showConfigModal && (
         <SupabaseConfigModal onClose={() => setShowConfigModal(false)} />
+      )}
+
+      {showUserModal && (
+        <UserManagementModal
+          onClose={() => setShowUserModal(false)}
+          onRefresh={() => {
+            if (selectedOSId) loadOSDetail(selectedOSId);
+          }}
+        />
       )}
     </div>
   );

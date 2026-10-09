@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Wrench, Shield, Key, User, Lock, AlertCircle } from 'lucide-react';
+import { Wrench, Shield, User, Lock, AlertCircle, KeyRound } from 'lucide-react';
 
 export const Login = () => {
   const { login, loading, error } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showQuickAccess, setShowQuickAccess] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -19,7 +20,7 @@ export const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F7E6] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#F7F7E6] flex items-center justify-center p-4 font-serif">
       <div className="bg-[#032326] text-white rounded-2xl shadow-2xl max-w-md w-full border-t-8 border-[#8C4580] p-8 space-y-6">
         {/* Header Logo */}
         <div className="text-center space-y-2">
@@ -36,7 +37,7 @@ export const Login = () => {
 
         {/* Error alert */}
         {error && (
-          <div className="bg-red-900/80 border border-red-500 text-red-200 text-xs p-3 rounded-lg flex items-center gap-2">
+          <div className="bg-red-900/80 border border-red-500 text-red-200 text-xs p-3 rounded-lg flex items-center gap-2 font-sans">
             <AlertCircle className="w-4 h-4 text-red-300 flex-shrink-0" />
             <span>{error}</span>
           </div>
@@ -83,33 +84,45 @@ export const Login = () => {
           </button>
         </form>
 
-        {/* Teacher/Evaluator Quick Login Access */}
-        <div className="pt-4 border-t border-emerald-900/60 text-xs space-y-3">
-          <p className="text-center text-gray-300 font-bold uppercase text-[10px] tracking-wider">
-            🔑 Acesso Rápido de Teste (Avaliador)
-          </p>
-
-          <div className="grid grid-cols-2 gap-2">
+        {/* Alteração #5: Security improvement - quick access hidden behind toggle */}
+        <div className="pt-4 border-t border-emerald-900/60 text-xs font-sans space-y-3">
+          <div className="flex justify-between items-center text-[11px] text-gray-400">
+            <span>Acesso Restrito por Senha</span>
             <button
-              onClick={() => quickFill('admin', 'admin123')}
-              className="bg-[#125938] hover:bg-[#308C50] text-white p-2.5 rounded-lg border border-emerald-700 text-left transition flex flex-col"
+              type="button"
+              onClick={() => setShowQuickAccess(!showQuickAccess)}
+              className="text-amber-400 hover:text-amber-300 underline font-semibold flex items-center gap-1"
             >
-              <span className="font-bold text-white text-[11px] flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5 text-[#8C4580]" /> Administrador
-              </span>
-              <span className="text-[10px] text-gray-300 font-mono mt-0.5">admin / admin123</span>
-            </button>
-
-            <button
-              onClick={() => quickFill('mecanico', 'mecanico123')}
-              className="bg-[#125938] hover:bg-[#308C50] text-white p-2.5 rounded-lg border border-emerald-700 text-left transition flex flex-col"
-            >
-              <span className="font-bold text-white text-[11px] flex items-center gap-1">
-                <Wrench className="w-3.5 h-3.5 text-emerald-400" /> Mecânico
-              </span>
-              <span className="text-[10px] text-gray-300 font-mono mt-0.5">mecanico / mecanico123</span>
+              <KeyRound className="w-3.5 h-3.5" />
+              {showQuickAccess ? 'Ocultar Credenciais' : 'Credenciais de Teste'}
             </button>
           </div>
+
+          {showQuickAccess && (
+            <div className="grid grid-cols-2 gap-2 pt-1 animate-fadeIn">
+              <button
+                type="button"
+                onClick={() => quickFill('admin', 'admin123')}
+                className="bg-[#125938] hover:bg-[#308C50] text-white p-2.5 rounded-lg border border-emerald-700 text-left transition flex flex-col"
+              >
+                <span className="font-bold text-white text-[11px] flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5 text-[#8C4580]" /> Administrador
+                </span>
+                <span className="text-[10px] text-gray-300 font-mono mt-0.5">admin / admin123</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => quickFill('mecanico', 'mecanico123')}
+                className="bg-[#125938] hover:bg-[#308C50] text-white p-2.5 rounded-lg border border-emerald-700 text-left transition flex flex-col"
+              >
+                <span className="font-bold text-white text-[11px] flex items-center gap-1">
+                  <Wrench className="w-3.5 h-3.5 text-emerald-400" /> Mecânico
+                </span>
+                <span className="text-[10px] text-gray-300 font-mono mt-0.5">mecanico / mecanico123</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

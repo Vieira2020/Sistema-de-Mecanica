@@ -1,13 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { Package, Plus, Search, DollarSign, Tag, Layers } from 'lucide-react';
+import { Package, Plus, Search, DollarSign, Tag, Layers, Edit3, ShoppingBag } from 'lucide-react';
+
+const PRESET_COMPATIBILITIES = [
+  'Gol / Fox / Voyage / Saveiro',
+  'Honda Civic / Fit / City / HR-V',
+  'Fiat Strada / Palio / Uno / Mobi',
+  'Chevrolet Onix / Prisma / Tracker',
+  'Toyota Corolla / Etios',
+  'Universal'
+];
 
 export const PartsCatalog = ({ searchTerm }) => {
   const { isAdmin } = useAuth();
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+
+  // Alteração #11: Stock adjustment state
+  const [editingStockId, setEditingStockId] = useState(null);
+  const [newStockValue, setNewStockValue] = useState('');
 
   const [partForm, setPartForm] = useState({
     codigo_interno: '',
@@ -16,7 +29,7 @@ export const PartsCatalog = ({ searchTerm }) => {
     preco_min: '',
     preco_max: '',
     preco_medio: '',
-    estoque_atual: '0'
+    estoque_atual: '10'
   });
 
   useEffect(() => {
@@ -30,6 +43,23 @@ export const PartsCatalog = ({ searchTerm }) => {
     setLoading(false);
   };
 
+  // Alteração #20: Auto-generate code like PEC-005 while remaining editable
+  const handleOpenModal = () => {
+    const nextNum = parts.length + 1;
+    const formattedCode = `PEC-${String(nextNum).padStart(3, '0')}`;
+
+    setPartForm({
+      codigo_interno: formattedCode,
+      nome: '',
+      modelo_compativel: '',
+      preco_min: '',
+      preco_max: '',
+      preco_medio: '',
+      estoque_atual: '10'
+    });
+    setShowModal(true);
+  };
+
   const handleAddPart = async (e) => {
     e.preventDefault();
     if (!partForm.codigo_interno || !partForm.nome || !partForm.preco_medio) {
@@ -39,15 +69,18 @@ export const PartsCatalog = ({ searchTerm }) => {
 
     await db.addPart(partForm);
     setShowModal(false);
-    setPartForm({
-      codigo_interno: '',
-      nome: '',
-      modelo_compativel: '',
-      preco_min: '',
-      preco_max: '',
-      preco_medio: '',
-      estoque_atual: '0'
-    });
+    loadParts();
+  };
+
+  // Alteração #11: Direct stock update/purchase
+  const handleSaveStock = async (partId) => {
+    const qty = parseInt(newStockValue);
+    if (isNaN(qty) || qty < 0) {
+      alert('Insira uma quantidade válida.');
+      return;
+    }
+    await db.updatePartStock(partId, qty);
+    setEditingStockId(null);
     loadParts();
   };
 
@@ -64,25 +97,25 @@ export const PartsCatalog = ({ searchTerm }) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#032326] text-white p-6 rounded-xl border-l-8 border-[#8C4580] shadow">
         <div>
           <div className="flex items-center gap-2">
             <Package className="w-6 h-6 text-[#8C4580]" />
-            <h2 className="text-xl font-bold font-serif">Catálogo de Peças & Tabela de Referência (RF-016, RF-019)</h2>
+            <h2 className="text-xl font-bold font-serif">Catálogo de Peças & Gestão de Estoque</h2>
           </div>
-          <p className="text-xs text-gray-300 font-sans mt-1">
-            Lista de componentes, modelos compatíveis e faixas de preços praticadas no mercado.
+          <p className="text-xs text-gray-300 mt-1">
+            Componentes, modelos compatíveis e ajuste manual/compra de peças do estoque.
           </p>
         </div>
 
         {isAdmin && (
           <button
-            onClick={() => setShowModal(true)}
+            onClick={handleOpenModal}
             className="bg-[#125938] hover:bg-[#06402F] text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 shadow transition border border-emerald-600"
           >
-            <Plus className="w-4 h-4" /> Cadastrar Peça no Catálogo
+            <Plus className="w-4 h-4" /> Cadastrar Nova Peça
           </button>
         )}
       </div>
@@ -101,9 +134,47 @@ export const PartsCatalog = ({ searchTerm }) => {
                   <span className="font-mono text-xs font-bold bg-[#125938] text-white px-2 py-0.5 rounded">
                     {part.codigo_interno}
                   </span>
-                  <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                    Estoque: {part.estoque_atual} un
-                  </span>
+
+                  {/* Alteração #11: Inline Stock Editing / Purchase */}
+                  {editingStockId === part.id ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="0"
+                        value={newStockValue}
+                        onChange={(e) => setNewStockValue(e.target.value)}
+                        className="w-16 border rounded p-1 text-xs font-bold font-mono text-right"
+                      />
+                      <button
+                        onClick={() => handleSaveStock(part.id)}
+                        className="bg-[#125938] text-white px-2 py-1 rounded text-[10px] font-bold"
+                      >
+                        Salvar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
+                        (part.estoque_atual || 0) <= 2
+                          ? 'bg-red-50 text-red-800 border-red-200'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      }`}>
+                        Estoque: {part.estoque_atual !== undefined ? part.estoque_atual : 10} un
+                      </span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => {
+                            setEditingStockId(part.id);
+                            setNewStockValue(String(part.estoque_atual !== undefined ? part.estoque_atual : 10));
+                          }}
+                          className="text-gray-500 hover:text-[#8C4580] p-1 rounded"
+                          title="Alterar ou Comprar Peças (Atualizar Estoque)"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <h3 className="font-bold text-base text-gray-900 mt-2 font-serif">{part.nome}</h3>
@@ -137,14 +208,13 @@ export const PartsCatalog = ({ searchTerm }) => {
             <form onSubmit={handleAddPart} className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Código Interno *</label>
+                  <label className="block font-bold text-gray-700 mb-1">Código Interno (Auto) *</label>
                   <input
                     type="text"
                     required
                     value={partForm.codigo_interno}
                     onChange={(e) => setPartForm({ ...partForm, codigo_interno: e.target.value.toUpperCase() })}
-                    placeholder="PEC-005"
-                    className="w-full border rounded p-2 uppercase font-mono"
+                    className="w-full border rounded p-2 uppercase font-mono font-bold bg-emerald-50 text-[#125938]"
                   />
                 </div>
 
@@ -167,18 +237,31 @@ export const PartsCatalog = ({ searchTerm }) => {
                   required
                   value={partForm.nome}
                   onChange={(e) => setPartForm({ ...partForm, nome: e.target.value })}
-                  placeholder="Ex: Correia Dentada"
+                  placeholder="Ex: Amortecedor Dianteiro / Pastilha de Freio"
                   className="w-full border rounded p-2"
                 />
               </div>
 
+              {/* Alteração #12: Preset compatibility chips + customizable field */}
               <div>
-                <label className="block font-bold text-gray-700 mb-1">Modelos Compatíveis</label>
+                <label className="block font-bold text-gray-700 mb-1">Modelos Compatíveis *</label>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {PRESET_COMPATIBILITIES.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setPartForm({ ...partForm, modelo_compativel: preset })}
+                      className="bg-gray-100 hover:bg-[#125938] hover:text-white px-2 py-0.5 rounded text-[10px] font-semibold transition"
+                    >
+                      + {preset.split('/')[0]}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="text"
                   value={partForm.modelo_compativel}
                   onChange={(e) => setPartForm({ ...partForm, modelo_compativel: e.target.value })}
-                  placeholder="Ex: Fiat Uno / Palio / Siena"
+                  placeholder="Digite ou selecione os modelos compatíveis acima"
                   className="w-full border rounded p-2"
                 />
               </div>
@@ -222,7 +305,7 @@ export const PartsCatalog = ({ searchTerm }) => {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex justify-end gap-2 pt-3 border-t">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}

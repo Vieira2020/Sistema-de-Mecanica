@@ -15,11 +15,12 @@ import {
   Calendar,
   AlertTriangle,
   Lock,
-  Hammer,
-  ShieldCheck,
+  Trash2,
+  Edit2,
   FileText
 } from 'lucide-react';
 
+// STATUS FLOW & NUMERIC PREFIX LABELS (Alteração #16)
 const STATUS_FLOW = [
   'RECEBIDO',
   'EM_DIAGNOSTICO',
@@ -51,6 +52,11 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
   const [statusNote, setStatusNote] = useState('');
   const [techNote, setTechNote] = useState('');
 
+  // Alteração #2: Editable Pricing State
+  const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const pecasTotal = (os.pecas || []).reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
+  const [editableLabor, setEditableLabor] = useState(String(os.mao_de_obra || 0));
+
   const [showPartModal, setShowPartModal] = useState(false);
   const [partForm, setPartForm] = useState({
     peca_id: parts[0]?.id || '',
@@ -62,6 +68,25 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
   const client = clients.find((c) => c.id === os.cliente_id);
   const vehicle = vehicles.find((v) => v.id === os.veiculo_id);
   const responsibleUser = users.find((u) => u.id === os.responsavel_id);
+
+  // Alteração #2: Save Price Adjustment
+  const handleSavePriceAdjustment = async (e) => {
+    e.preventDefault();
+    const laborNum = parseFloat(editableLabor || 0);
+    const newTotalNum = pecasTotal + laborNum;
+
+    await db.updateOSPrice(os.id, laborNum, newTotalNum);
+    setIsEditingPrice(false);
+    onRefresh();
+  };
+
+  // Alteração #15: Admin Delete OS
+  const handleDeleteOS = async () => {
+    if (window.confirm(`Tem certeza que deseja EXCLUIR permanentemente a OS #${os.numero}?`)) {
+      await db.deleteOS(os.id);
+      onBack();
+    }
+  };
 
   const handleStatusChange = async (e) => {
     e.preventDefault();
@@ -94,6 +119,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
     });
   };
 
+  // Alteração #4: Adding part auto-decrements stock in pecas_catalogo
   const handleAddPart = async (e) => {
     e.preventDefault();
     if (!partForm.peca_id || !partForm.quantidade) return;
@@ -137,27 +163,96 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
           </div>
         </div>
 
-        {/* Financial Badge - Admin Only */}
-        {isAdmin ? (
-          <div className="bg-[#125938] px-4 py-2 rounded-lg text-right border border-emerald-700">
-            <span className="text-[10px] text-emerald-200 uppercase tracking-wider block">Valor Total da OS</span>
-            <span className="text-xl font-bold font-mono text-white">
-              R$ {parseFloat(os.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-        ) : (
-          <div className="bg-amber-950/80 px-3 py-1.5 rounded-lg text-amber-200 text-xs flex items-center gap-1.5 border border-amber-800">
-            <Lock className="w-4 h-4 text-amber-400" />
-            <span>Valores e dados financeiros restritos ao Admin (RF-003)</span>
-          </div>
-        )}
+        {/* Action Controls & Financial Badge */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Alteração #15: Admin Delete OS Button */}
+          {isAdmin && (
+            <button
+              onClick={handleDeleteOS}
+              className="bg-red-900/90 hover:bg-red-800 text-red-100 text-xs px-3 py-2 rounded-lg font-bold flex items-center gap-1.5 transition border border-red-700"
+              title="Excluir Ordem de Serviço em execução"
+            >
+              <Trash2 className="w-4 h-4 text-red-300" />
+              <span>Excluir OS</span>
+            </button>
+          )}
+
+          {/* Financial Badge - Admin Only */}
+          {isAdmin ? (
+            <div className="bg-[#125938] px-4 py-2 rounded-lg text-right border border-emerald-700">
+              <span className="text-[10px] text-emerald-200 uppercase tracking-wider block">Valor Total da OS</span>
+              <span className="text-xl font-bold font-mono text-white">
+                R$ {parseFloat(os.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          ) : (
+            <div className="bg-amber-950/80 px-3 py-1.5 rounded-lg text-amber-200 text-xs flex items-center gap-1.5 border border-amber-800">
+              <Lock className="w-4 h-4 text-amber-400" />
+              <span>Valores financeiros restritos ao Admin</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Status Progress Stepper */}
+      {/* Alteração #2: Price Adjustment Box for Admin */}
+      {isAdmin && (
+        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-300 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-xs font-sans">
+          <div className="space-y-1">
+            <h4 className="font-bold text-[#06402F] text-sm flex items-center gap-1.5">
+              <DollarSign className="w-4 h-4 text-[#8C4580]" />
+              Ajuste de Preço e Mão de Obra do Serviço
+            </h4>
+            <p className="text-gray-600">
+              Peças: <strong>R$ {pecasTotal.toFixed(2)}</strong> | Mão de Obra Atual: <strong>R$ {parseFloat(os.mao_de_obra || 0).toFixed(2)}</strong>
+            </p>
+          </div>
+
+          {isEditingPrice ? (
+            <form onSubmit={handleSavePriceAdjustment} className="flex items-center gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-700">Mão de Obra (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editableLabor}
+                  onChange={(e) => setEditableLabor(e.target.value)}
+                  className="border rounded p-1.5 text-xs font-bold w-28 font-mono"
+                  required
+                />
+              </div>
+              <div className="pt-4 flex gap-1">
+                <button
+                  type="submit"
+                  className="bg-[#125938] hover:bg-[#06402F] text-white px-3 py-1.5 rounded font-bold"
+                >
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingPrice(false)}
+                  className="bg-gray-200 text-gray-700 px-3 py-1.5 rounded font-bold"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              onClick={() => setIsEditingPrice(true)}
+              className="bg-[#125938] hover:bg-[#06402F] text-white px-3 py-2 rounded-lg font-bold flex items-center gap-1.5 shadow"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              Alterar Preço / Mão de Obra
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Status Progress Stepper - Alteração #16 */}
       <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
         <h3 className="text-sm font-bold font-serif text-[#06402F] mb-4 flex items-center gap-2">
           <Clock className="w-4 h-4 text-[#8C4580]" />
-          Fluxo do Atendimento (9 Etapas)
+          Fluxo do Atendimento (9 Etapas Sequenciais)
         </h3>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
@@ -170,14 +265,14 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                 key={st}
                 className={`p-2 rounded-lg text-center text-[11px] font-bold border transition ${
                   isCurrent
-                    ? 'bg-[#8C4580] text-white border-[#8C4580] shadow-md ring-2 ring-[#8C4580]/40'
+                    ? 'bg-[#8C4580] text-white border-[#8C4580] shadow-md ring-2 ring-[#8C4580]/40 scale-105'
                     : isPassed
                     ? 'bg-[#125938] text-white border-emerald-700'
                     : 'bg-gray-100 text-gray-500 border-gray-200'
                 }`}
               >
                 <div className="text-[10px] opacity-80 uppercase tracking-wider">{idx + 1}</div>
-                <div className="leading-tight mt-0.5">{STATUS_LABELS[st].replace(/^\d+\.\s*/, '')}</div>
+                <div className="leading-tight mt-0.5">{STATUS_LABELS[st]}</div>
               </div>
             );
           })}
@@ -195,7 +290,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
               Dados do Veículo e Cliente
             </div>
 
-            <div className="p-4 space-y-3 text-xs">
+            <div className="p-4 space-y-3 text-xs font-sans">
               <div>
                 <span className="text-gray-500 block text-[10px] uppercase font-bold">Veículo</span>
                 <div className="flex items-center justify-between mt-0.5">
@@ -219,7 +314,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                   </div>
                 ) : (
                   <p className="text-[11px] text-amber-700 italic mt-1 bg-amber-50 p-1.5 rounded border border-amber-200">
-                    Telefone, CPF e endereço ocultos para o perfil Mecânico (RF-003).
+                    Dados pessoais de contato restritos ao Administrador.
                   </p>
                 )}
               </div>
@@ -233,7 +328,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
           </div>
 
           {/* Update Status Panel */}
-          <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3">
+          <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3 font-sans">
             <h4 className="font-bold font-serif text-sm text-[#06402F] flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-[#8C4580]" />
               Atualizar Status da OS
@@ -285,14 +380,14 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
               {isAdmin && (
                 <button
                   onClick={() => setShowPartModal(true)}
-                  className="bg-[#8C4580] hover:bg-[#723668] text-white px-2 py-1 rounded text-[11px] font-sans flex items-center gap-1"
+                  className="bg-[#8C4580] hover:bg-[#723668] text-white px-2 py-1 rounded text-[11px] font-sans flex items-center gap-1 font-bold"
                 >
                   <Plus className="w-3 h-3" /> Vincular Peça
                 </button>
               )}
             </div>
 
-            <div className="p-3 text-xs space-y-2">
+            <div className="p-3 text-xs space-y-2 font-sans">
               {!os.pecas || os.pecas.length === 0 ? (
                 <p className="text-gray-500 italic text-center py-2">Nenhuma peça vinculada a esta OS.</p>
               ) : (
@@ -322,16 +417,16 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
           </div>
         </div>
 
-        {/* Right Col: Timeline Feed (RF-013, RF-014, RF-015) */}
+        {/* Right Col: Timeline Feed */}
         <div className="lg:col-span-2 space-y-6">
           {/* Post Technical Note Box */}
-          <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3">
+          <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3 font-sans">
             <h4 className="font-bold font-serif text-sm text-[#06402F] flex items-center gap-2">
               <Send className="w-4 h-4 text-[#8C4580]" />
               Registrar Atualização Técnica (Mecânico / Funileiro)
             </h4>
             <p className="text-xs text-gray-500">
-              Adicione atualizações e registros do serviço executado sem necessariamente alterar o status da OS (RF-014).
+              Adicione registros do serviço executado sem necessariamente alterar o status da OS.
             </p>
 
             <form onSubmit={handleAddTechNote} className="space-y-2 text-xs">
@@ -339,7 +434,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                 rows={3}
                 value={techNote}
                 onChange={(e) => setTechNote(e.target.value)}
-                placeholder="Ex: Motor desmontado. Identificado desgaste nas buchas da suspensão e vazamento no óleo."
+                placeholder="Ex: Motor desmontado. Identificado desgaste nas buchas da suspensão e vazamento de óleo."
                 className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-[#8C4580]"
               ></textarea>
 
@@ -356,15 +451,15 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
           </div>
 
           {/* Feed / Timeline */}
-          <div className="bg-white rounded-xl shadow border border-gray-200 p-5 space-y-4">
+          <div className="bg-white rounded-xl shadow border border-gray-200 p-5 space-y-4 font-sans">
             <div className="border-b pb-3 flex justify-between items-center">
               <div>
                 <h3 className="font-bold font-serif text-[#06402F] text-base flex items-center gap-2">
                   <FileText className="w-5 h-5 text-[#8C4580]" />
-                  Feed de Atualizações Técnicas (Linha do Tempo Imutável)
+                  Feed de Atualizações Técnicas (Linha do Tempo)
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Rastreabilidade completa com autor, data/hora e observações (RF-013, RF-015).
+                  Rastreabilidade completa com autor, data/hora e observações.
                 </p>
               </div>
               <span className="text-xs bg-[#125938] text-white px-2.5 py-1 rounded font-mono font-bold">
@@ -382,7 +477,6 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
 
                   return (
                     <div key={item.id} className="relative pl-8 space-y-1">
-                      {/* Timeline dot */}
                       <div className="absolute left-2 top-1.5 w-3.5 h-3.5 rounded-full bg-[#8C4580] ring-4 ring-white"></div>
 
                       <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs">
@@ -425,7 +519,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
               Vincular Peça à OS #{os.numero}
             </h3>
 
-            <form onSubmit={handleAddPart} className="space-y-3 text-xs">
+            <form onSubmit={handleAddPart} className="space-y-3 text-xs font-sans">
               <div>
                 <label className="block font-bold text-gray-700 mb-1">Selecione a Peça do Catálogo *</label>
                 <select
@@ -437,7 +531,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                   <option value="">-- Selecione uma peça --</option>
                   {parts.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.codigo_interno} - {p.nome} (Ref: R$ {p.preco_medio})
+                      {p.codigo_interno} - {p.nome} (Estoque: {p.estoque_atual || 0} un)
                     </option>
                   ))}
                 </select>
@@ -482,7 +576,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex justify-end gap-2 pt-3 border-t">
                 <button
                   type="button"
                   onClick={() => setShowPartModal(false)}
