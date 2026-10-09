@@ -11,8 +11,8 @@ export const ClientsVehicles = ({ searchTerm, onCreateOSForVehicle }) => {
 
   const [showClientModal, setShowClientModal] = useState(false);
   const [showVehicleModal, setShowVehicleModal] = useState(false);
-  const [selectedClientId, setSelectedClientId] = useState('');
 
+  // Clean form resets (ALTERAÇÃO #14)
   const [clientForm, setClientForm] = useState({
     nome: '',
     telefone: '',
@@ -25,7 +25,7 @@ export const ClientsVehicles = ({ searchTerm, onCreateOSForVehicle }) => {
     placa: '',
     modelo: '',
     cor: '',
-    ano: '',
+    ano: '2022',
     observacoes: ''
   });
 
@@ -61,14 +61,23 @@ export const ClientsVehicles = ({ searchTerm, onCreateOSForVehicle }) => {
       return;
     }
 
+    // Vehicle year limit check (ALTERAÇÃO #7: 1950 - 2026)
+    if (vehicleForm.ano) {
+      const yr = parseInt(vehicleForm.ano);
+      if (isNaN(yr) || yr < 1950 || yr > 2026) {
+        alert('O ano do veículo deve ser entre 1950 e 2026.');
+        return;
+      }
+    }
+
     await db.addVehicle(vehicleForm);
     setShowVehicleModal(false);
-    setVehicleForm({ cliente_id: '', placa: '', modelo: '', cor: '', ano: '', observacoes: '' });
+    setVehicleForm({ cliente_id: '', placa: '', modelo: '', cor: '', ano: '2022', observacoes: '' });
     loadData();
   };
 
   const openAddVehicleModal = (clientId = '') => {
-    setVehicleForm((prev) => ({ ...prev, cliente_id: clientId || (clients[0]?.id || '') }));
+    setVehicleForm({ cliente_id: clientId || (clients[0]?.id || ''), placa: '', modelo: '', cor: '', ano: '2022', observacoes: '' });
     setShowVehicleModal(true);
   };
 
@@ -104,7 +113,10 @@ export const ClientsVehicles = ({ searchTerm, onCreateOSForVehicle }) => {
         <div className="flex flex-wrap gap-2">
           {isAdmin && (
             <button
-              onClick={() => setShowClientModal(true)}
+              onClick={() => {
+                setClientForm({ nome: '', telefone: '', cpf: '', endereco: '' });
+                setShowClientModal(true);
+              }}
               className="bg-[#125938] hover:bg-[#06402F] text-white px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition border border-emerald-600"
             >
               <Plus className="w-4 h-4" /> Novo Cliente
@@ -206,11 +218,12 @@ export const ClientsVehicles = ({ searchTerm, onCreateOSForVehicle }) => {
                           </div>
 
                           <div className="pt-2 border-t border-gray-100 flex justify-end">
+                            {/* Renamed option to "Nova ordem de serviço" (ALTERAÇÃO #8) */}
                             <button
                               onClick={() => onCreateOSForVehicle && onCreateOSForVehicle(veh, client)}
                               className="text-xs bg-[#8C4580] hover:bg-[#723668] text-white px-2.5 py-1.5 rounded font-semibold flex items-center gap-1 transition shadow-sm"
                             >
-                              <FileText className="w-3.5 h-3.5" /> Nova OS para este Veículo
+                              <FileText className="w-3.5 h-3.5" /> Nova ordem de serviço
                             </button>
                           </div>
                         </div>
@@ -335,18 +348,22 @@ export const ClientsVehicles = ({ searchTerm, onCreateOSForVehicle }) => {
                     required
                     value={vehicleForm.placa}
                     onChange={(e) => setVehicleForm({ ...vehicleForm, placa: e.target.value.toUpperCase() })}
-                    placeholder="ABC1D23 ou ABC1234"
+                    placeholder="ABC1D23"
                     className="w-full border rounded p-2 uppercase font-mono focus:ring-2 focus:ring-[#8C4580]"
                   />
                 </div>
 
+                {/* Vehicle Year Validation 1950 - 2026 (ALTERAÇÃO #7) */}
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Ano (Opcional)</label>
+                  <label className="block font-bold text-gray-700 mb-1">Ano (1950 - 2026) *</label>
                   <input
                     type="number"
+                    min="1950"
+                    max="2026"
+                    required
                     value={vehicleForm.ano}
                     onChange={(e) => setVehicleForm({ ...vehicleForm, ano: e.target.value })}
-                    placeholder="2021"
+                    placeholder="2022"
                     className="w-full border rounded p-2 focus:ring-2 focus:ring-[#8C4580]"
                   />
                 </div>

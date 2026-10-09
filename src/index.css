@@ -17,6 +17,22 @@ body {
   font-family: 'PT Serif Caption', 'Neuton', 'Bona Nova SC', serif;
 }
 
+/* Fluid tab fade-in animation (ALTERAÇÃO #18) */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;

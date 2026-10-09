@@ -15,8 +15,8 @@ import {
   Calendar,
   AlertTriangle,
   Lock,
-  Hammer,
-  ShieldCheck,
+  Edit,
+  Trash2,
   FileText
 } from 'lucide-react';
 
@@ -32,6 +32,7 @@ const STATUS_FLOW = [
   'ENTREGUE'
 ];
 
+// ALTERAÇÃO #16: Clear numbering 1-9
 const STATUS_LABELS = {
   RECEBIDO: '1. Recebido',
   EM_DIAGNOSTICO: '2. Em Diagnóstico',
@@ -51,6 +52,16 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
   const [statusNote, setStatusNote] = useState('');
   const [techNote, setTechNote] = useState('');
 
+  // Price & Service Adjustment Modal State (ALTERAÇÃO #2)
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    mao_de_obra: String(os.mao_de_obra || 0),
+    tipo_servico: os.tipo_servico || 'MECANICA',
+    previsao_entrega: os.previsao_entrega || '',
+    note: ''
+  });
+
+  // Part linkage modal state
   const [showPartModal, setShowPartModal] = useState(false);
   const [partForm, setPartForm] = useState({
     peca_id: parts[0]?.id || '',
@@ -82,6 +93,41 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
     await db.addOSTimelineNote(os.id, techNote, user);
     setTechNote('');
     onRefresh();
+  };
+
+  // ALTERAÇÃO #2: Save budget / service adjustments
+  const handleSaveOSDetails = async (e) => {
+    e.preventDefault();
+    const newLabor = parseFloat(editForm.mao_de_obra || 0);
+    const pecasTotal = (os.pecas || []).reduce((sum, p) => sum + p.quantidade * p.preco_unitario, 0);
+    const newTotal = newLabor + pecasTotal;
+
+    const adjustmentNote = editForm.note
+      ? editForm.note
+      : `Ajuste de valor/escopo efetuado. Mão de obra alterada de R$ ${os.mao_de_obra} para R$ ${newLabor}.`;
+
+    await db.updateOSDetails(
+      os.id,
+      {
+        mao_de_obra: newLabor,
+        valor_total: newTotal,
+        tipo_servico: editForm.tipo_servico,
+        previsao_entrega: editForm.previsao_entrega,
+        note: adjustmentNote
+      },
+      user
+    );
+
+    setShowEditModal(false);
+    onRefresh();
+  };
+
+  // ALTERAÇÃO #15: Delete OS in execution
+  const handleDeleteOS = async () => {
+    if (window.confirm(`Tem certeza que deseja EXCLUIR permanentemente a Ordem de Serviço #${os.numero}?`)) {
+      await db.deleteOS(os.id);
+      onBack();
+    }
   };
 
   const handleSelectPart = (pecaId) => {
@@ -137,27 +183,57 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
           </div>
         </div>
 
-        {/* Financial Badge - Admin Only */}
-        {isAdmin ? (
-          <div className="bg-[#125938] px-4 py-2 rounded-lg text-right border border-emerald-700">
-            <span className="text-[10px] text-emerald-200 uppercase tracking-wider block">Valor Total da OS</span>
-            <span className="text-xl font-bold font-mono text-white">
-              R$ {parseFloat(os.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-        ) : (
-          <div className="bg-amber-950/80 px-3 py-1.5 rounded-lg text-amber-200 text-xs flex items-center gap-1.5 border border-amber-800">
-            <Lock className="w-4 h-4 text-amber-400" />
-            <span>Valores e dados financeiros restritos ao Admin (RF-003)</span>
-          </div>
-        )}
+        {/* Right side controls: Financial badge, Edit budget, Delete OS */}
+        <div className="flex flex-wrap items-center gap-3">
+          {isAdmin ? (
+            <>
+              <div className="bg-[#125938] px-4 py-2 rounded-lg text-right border border-emerald-700">
+                <span className="text-[10px] text-emerald-200 uppercase tracking-wider block">Valor Total Atual</span>
+                <span className="text-xl font-bold font-mono text-white">
+                  R$ {parseFloat(os.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* ALTERAÇÃO #2: Edit budget / scope */}
+              <button
+                onClick={() => {
+                  setEditForm({
+                    mao_de_obra: String(os.mao_de_obra || 0),
+                    tipo_servico: os.tipo_servico || 'MECANICA',
+                    previsao_entrega: os.previsao_entrega || '',
+                    note: ''
+                  });
+                  setShowEditModal(true);
+                }}
+                className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow"
+                title="Ajustar Valores/Preço da OS em andamento"
+              >
+                <Edit className="w-4 h-4" /> Ajustar Preço / Escopo
+              </button>
+
+              {/* ALTERAÇÃO #15: Delete OS */}
+              <button
+                onClick={handleDeleteOS}
+                className="bg-red-900/90 hover:bg-red-800 text-red-100 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow border border-red-700"
+                title="Excluir esta Ordem de Serviço"
+              >
+                <Trash2 className="w-4 h-4" /> Excluir OS
+              </button>
+            </>
+          ) : (
+            <div className="bg-amber-950/80 px-3 py-1.5 rounded-lg text-amber-200 text-xs flex items-center gap-1.5 border border-amber-800">
+              <Lock className="w-4 h-4 text-amber-400" />
+              <span>Valores restritos ao Admin</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Status Progress Stepper */}
+      {/* Status Progress Stepper (ALTERAÇÃO #16) */}
       <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
         <h3 className="text-sm font-bold font-serif text-[#06402F] mb-4 flex items-center gap-2">
           <Clock className="w-4 h-4 text-[#8C4580]" />
-          Fluxo do Atendimento (9 Etapas)
+          Fluxo do Atendimento (9 Etapas Sequenciais)
         </h3>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
@@ -176,7 +252,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                     : 'bg-gray-100 text-gray-500 border-gray-200'
                 }`}
               >
-                <div className="text-[10px] opacity-80 uppercase tracking-wider">{idx + 1}</div>
+                <div className="text-[10px] opacity-80 uppercase tracking-wider font-mono">Etapa {idx + 1}</div>
                 <div className="leading-tight mt-0.5">{STATUS_LABELS[st].replace(/^\d+\.\s*/, '')}</div>
               </div>
             );
@@ -184,9 +260,9 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
         </div>
       </div>
 
-      {/* Main Grid: Details & Feed */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Col: Info, Parts, Status Update */}
+        {/* Left Col */}
         <div className="lg:col-span-1 space-y-6">
           {/* Client & Vehicle Card */}
           <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
@@ -219,7 +295,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                   </div>
                 ) : (
                   <p className="text-[11px] text-amber-700 italic mt-1 bg-amber-50 p-1.5 rounded border border-amber-200">
-                    Telefone, CPF e endereço ocultos para o perfil Mecânico (RF-003).
+                    Telefone, CPF e endereço ocultos para perfil Mecânico (RF-003).
                   </p>
                 )}
               </div>
@@ -228,11 +304,12 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                 <span className="text-gray-500 block text-[10px] uppercase font-bold">Responsável Técnico</span>
                 <p className="font-semibold text-emerald-800 mt-0.5">{responsibleUser?.nome || 'Não atribuído'}</p>
                 <p className="text-gray-500">Previsão Entrega: {os.previsao_entrega || 'Não informada'}</p>
+                <p className="text-gray-500">Mão de Obra: R$ {parseFloat(os.mao_de_obra || 0).toFixed(2)}</p>
               </div>
             </div>
           </div>
 
-          {/* Update Status Panel */}
+          {/* Update Status Panel (ALTERAÇÃO #16) */}
           <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3">
             <h4 className="font-bold font-serif text-sm text-[#06402F] flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-[#8C4580]" />
@@ -322,7 +399,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
           </div>
         </div>
 
-        {/* Right Col: Timeline Feed (RF-013, RF-014, RF-015) */}
+        {/* Right Col: Timeline Feed */}
         <div className="lg:col-span-2 space-y-6">
           {/* Post Technical Note Box */}
           <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3">
@@ -330,16 +407,13 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
               <Send className="w-4 h-4 text-[#8C4580]" />
               Registrar Atualização Técnica (Mecânico / Funileiro)
             </h4>
-            <p className="text-xs text-gray-500">
-              Adicione atualizações e registros do serviço executado sem necessariamente alterar o status da OS (RF-014).
-            </p>
 
             <form onSubmit={handleAddTechNote} className="space-y-2 text-xs">
               <textarea
                 rows={3}
                 value={techNote}
                 onChange={(e) => setTechNote(e.target.value)}
-                placeholder="Ex: Motor desmontado. Identificado desgaste nas buchas da suspensão e vazamento no óleo."
+                placeholder="Ex: Amortecedor instalado e suspensão alinhada."
                 className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-[#8C4580]"
               ></textarea>
 
@@ -361,11 +435,8 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
               <div>
                 <h3 className="font-bold font-serif text-[#06402F] text-base flex items-center gap-2">
                   <FileText className="w-5 h-5 text-[#8C4580]" />
-                  Feed de Atualizações Técnicas (Linha do Tempo Imutável)
+                  Feed de Atualizações Técnicas (Linha do Tempo)
                 </h3>
-                <p className="text-xs text-gray-500">
-                  Rastreabilidade completa com autor, data/hora e observações (RF-013, RF-015).
-                </p>
               </div>
               <span className="text-xs bg-[#125938] text-white px-2.5 py-1 rounded font-mono font-bold">
                 {os.timeline?.length || 0} registros
@@ -382,7 +453,6 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
 
                   return (
                     <div key={item.id} className="relative pl-8 space-y-1">
-                      {/* Timeline dot */}
                       <div className="absolute left-2 top-1.5 w-3.5 h-3.5 rounded-full bg-[#8C4580] ring-4 ring-white"></div>
 
                       <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs">
@@ -390,9 +460,6 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                           <span className="font-bold text-gray-900 flex items-center gap-1">
                             <User className="w-3.5 h-3.5 text-[#125938]" />
                             {author?.nome || 'Usuário'}
-                            <span className="text-[10px] text-gray-500 font-normal">
-                              ({author?.perfil || 'SISTEMA'})
-                            </span>
                           </span>
                           <span className="text-[11px] font-mono text-gray-500">{dt}</span>
                         </div>
@@ -416,16 +483,97 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
         </div>
       </div>
 
+      {/* Modal Ajustar Preço / Escopo (ALTERAÇÃO #2) */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 border-t-8 border-amber-600 font-sans text-xs">
+            <h3 className="text-lg font-bold font-serif text-[#06402F] flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-amber-600" />
+              Ajustar Informações / Preço da OS #{os.numero}
+            </h3>
+
+            <p className="text-gray-600">
+              Caso o cliente peça para fazer mais ou menos serviços durante a manutenção, altere o valor da mão de obra abaixo.
+            </p>
+
+            <form onSubmit={handleSaveOSDetails} className="space-y-3">
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Mão de Obra Atualizada (R$) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  value={editForm.mao_de_obra}
+                  onChange={(e) => setEditForm({ ...editForm, mao_de_obra: e.target.value })}
+                  className="w-full border rounded p-2 text-sm font-mono font-bold text-[#06402F]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Tipo de Serviço</label>
+                <select
+                  value={editForm.tipo_servico}
+                  onChange={(e) => setEditForm({ ...editForm, tipo_servico: e.target.value })}
+                  className="w-full border rounded p-2 font-bold"
+                >
+                  <option value="MECANICA">Mecânica</option>
+                  <option value="FUNILARIA">Funilaria</option>
+                  <option value="AMBOS">Ambos (Mecânica & Funilaria)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Previsão de Entrega</label>
+                <input
+                  type="date"
+                  value={editForm.previsao_entrega}
+                  onChange={(e) => setEditForm({ ...editForm, previsao_entrega: e.target.value })}
+                  className="w-full border rounded p-2"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Motivo / Observação do Ajuste</label>
+                <textarea
+                  rows={2}
+                  value={editForm.note}
+                  onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                  placeholder="Ex: Cliente solicitou remover o serviço de pintura do para-choque."
+                  className="w-full border rounded p-2"
+                ></textarea>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold shadow"
+                >
+                  Salvar Ajustes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal Vincular Peça */}
       {showPartModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 border-t-8 border-[#8C4580]">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 border-t-8 border-[#8C4580] font-sans text-xs">
             <h3 className="text-lg font-bold font-serif text-[#06402F] flex items-center gap-2">
               <Package className="w-5 h-5 text-[#8C4580]" />
               Vincular Peça à OS #{os.numero}
             </h3>
 
-            <form onSubmit={handleAddPart} className="space-y-3 text-xs">
+            <form onSubmit={handleAddPart} className="space-y-3">
               <div>
                 <label className="block font-bold text-gray-700 mb-1">Selecione a Peça do Catálogo *</label>
                 <select
@@ -437,7 +585,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                   <option value="">-- Selecione uma peça --</option>
                   {parts.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.codigo_interno} - {p.nome} (Ref: R$ {p.preco_medio})
+                      {p.codigo_interno} - {p.nome} (Estoque: {p.estoque_atual} un)
                     </option>
                   ))}
                 </select>
@@ -453,7 +601,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                     required
                     value={partForm.quantidade}
                     onChange={(e) => setPartForm({ ...partForm, quantidade: e.target.value })}
-                    className="w-full border rounded p-2"
+                    className="w-full border rounded p-2 font-bold"
                   />
                 </div>
 
@@ -466,7 +614,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                     required
                     value={partForm.preco_unitario}
                     onChange={(e) => setPartForm({ ...partForm, preco_unitario: e.target.value })}
-                    className="w-full border rounded p-2"
+                    className="w-full border rounded p-2 font-bold"
                   />
                 </div>
               </div>
@@ -482,7 +630,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex justify-end gap-2 pt-3 border-t">
                 <button
                   type="button"
                   onClick={() => setShowPartModal(false)}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Wrench, Shield, Key, User, Lock, AlertCircle } from 'lucide-react';
+import { Wrench, User, Lock, AlertCircle } from 'lucide-react';
 
 export const Login = () => {
   const { login, loading, error } = useAuth();
@@ -12,14 +12,8 @@ export const Login = () => {
     await login(username, password);
   };
 
-  const quickFill = (user, pass) => {
-    setUsername(user);
-    setPassword(pass);
-    login(user, pass);
-  };
-
   return (
-    <div className="min-h-screen bg-[#F7F7E6] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#F7F7E6] flex items-center justify-center p-4 font-serif">
       <div className="bg-[#032326] text-white rounded-2xl shadow-2xl max-w-md w-full border-t-8 border-[#8C4580] p-8 space-y-6">
         {/* Header Logo */}
         <div className="text-center space-y-2">
@@ -36,7 +30,7 @@ export const Login = () => {
 
         {/* Error alert */}
         {error && (
-          <div className="bg-red-900/80 border border-red-500 text-red-200 text-xs p-3 rounded-lg flex items-center gap-2">
+          <div className="bg-red-900/80 border border-red-500 text-red-200 text-xs p-3 rounded-lg flex items-center gap-2 font-sans">
             <AlertCircle className="w-4 h-4 text-red-300 flex-shrink-0" />
             <span>{error}</span>
           </div>
@@ -45,14 +39,14 @@ export const Login = () => {
         {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-4 text-xs font-sans">
           <div>
-            <label className="block font-bold text-gray-300 mb-1">Usuário / Login</label>
+            <label className="block font-bold text-gray-300 mb-1">Usuário / Login *</label>
             <div className="relative">
               <input
                 type="text"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Ex: admin ou mecanico"
+                placeholder="Digite seu usuário..."
                 className="w-full bg-[#125938] text-white placeholder-gray-400 rounded-lg pl-9 pr-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#8C4580] border border-emerald-800"
               />
               <User className="w-4 h-4 text-gray-300 absolute left-3 top-3" />
@@ -60,7 +54,7 @@ export const Login = () => {
           </div>
 
           <div>
-            <label className="block font-bold text-gray-300 mb-1">Senha</label>
+            <label className="block font-bold text-gray-300 mb-1">Senha *</label>
             <div className="relative">
               <input
                 type="password"
@@ -79,38 +73,9 @@ export const Login = () => {
             disabled={loading}
             className="w-full bg-[#8C4580] hover:bg-[#723668] text-white font-bold py-3 rounded-lg shadow-lg transition text-sm flex justify-center items-center gap-2"
           >
-            {loading ? 'Acessando...' : 'Acessar Sistema'}
+            {loading ? 'Acessando...' : 'Entrar no Sistema'}
           </button>
         </form>
-
-        {/* Teacher/Evaluator Quick Login Access */}
-        <div className="pt-4 border-t border-emerald-900/60 text-xs space-y-3">
-          <p className="text-center text-gray-300 font-bold uppercase text-[10px] tracking-wider">
-            🔑 Acesso Rápido de Teste (Avaliador)
-          </p>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => quickFill('admin', 'admin123')}
-              className="bg-[#125938] hover:bg-[#308C50] text-white p-2.5 rounded-lg border border-emerald-700 text-left transition flex flex-col"
-            >
-              <span className="font-bold text-white text-[11px] flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5 text-[#8C4580]" /> Administrador
-              </span>
-              <span className="text-[10px] text-gray-300 font-mono mt-0.5">admin / admin123</span>
-            </button>
-
-            <button
-              onClick={() => quickFill('mecanico', 'mecanico123')}
-              className="bg-[#125938] hover:bg-[#308C50] text-white p-2.5 rounded-lg border border-emerald-700 text-left transition flex flex-col"
-            >
-              <span className="font-bold text-white text-[11px] flex items-center gap-1">
-                <Wrench className="w-3.5 h-3.5 text-emerald-400" /> Mecânico
-              </span>
-              <span className="text-[10px] text-gray-300 font-mono mt-0.5">mecanico / mecanico123</span>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
