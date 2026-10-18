@@ -1,12 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Keys from localStorage or Vite environment
+// Default essential credentials provided for Shibuya Motores Supabase DB
+const DEFAULT_SUPABASE_URL = 'https://txiifnwudneznudawglc.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_7ySVIPOaOU3baOz-QyLaog_6EHumShw';
+
+// Keys from localStorage or Vite environment or fallback to defaults
 const getSupabaseConfig = () => {
   const customUrl = localStorage.getItem('shibuya_supabase_url');
   const customKey = localStorage.getItem('shibuya_supabase_key');
 
-  const url = customUrl || import.meta.env?.VITE_SUPABASE_URL || '';
-  const key = customKey || import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
+  const url = customUrl || import.meta.env?.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const key = customKey || import.meta.env?.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 
   return { url, key, isConfigured: Boolean(url && key) };
 };
@@ -35,7 +39,7 @@ export const clearSupabaseConfig = () => {
   window.location.reload();
 };
 
-// Seed initial data for local storage mode
+// Local storage seed for offline/fallback mode
 const INITIAL_SEED = {
   users: [
     { id: 'usr-1', nome: 'Dono Shibuya (Admin)', login: 'admin', senha_hash: 'admin123', perfil: 'ADMIN', ativo: true },
@@ -88,34 +92,10 @@ const INITIAL_SEED = {
         { id: 'att-3', autor_id: 'usr-1', data_hora: new Date(Date.now() - 86400000 * 1).toISOString(), status_anterior: 'EM_DIAGNOSTICO', status_novo: 'EM_FUNILARIA', observacao: 'Reparo de funilaria na porta do passageiro concluído. Transferido para mecânica.' },
         { id: 'att-4', autor_id: 'usr-2', data_hora: new Date(Date.now() - 3600000 * 2).toISOString(), status_anterior: 'EM_FUNILARIA', status_novo: 'EM_MECANICA', observacao: 'Desmontagem da suspensão dianteira iniciada. Amortecedor removido.' }
       ]
-    },
-    {
-      id: 'os-2',
-      numero: 1002,
-      cliente_id: 'cli-2',
-      veiculo_id: 'vec-2',
-      responsavel_id: 'usr-3',
-      tipo_servico: 'FUNILARIA',
-      data_entrada: new Date(Date.now() - 86400000 * 1).toISOString(),
-      previsao_entrega: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
-      mao_de_obra: 500,
-      valor_total: 720,
-      status: 'EM_FUNILARIA',
-      criado_por: 'usr-1',
-      criado_em: new Date(Date.now() - 86400000 * 1).toISOString(),
-      atualizado_em: new Date(Date.now() - 3600000 * 5).toISOString(),
-      pecas: [
-        { id: 'ospec-3', peca_id: 'pec-3', quantidade: 1, preco_unitario: 220, fornecedor: 'Honda Peças' }
-      ],
-      timeline: [
-        { id: 'att-5', autor_id: 'usr-1', data_hora: new Date(Date.now() - 86400000 * 1).toISOString(), status_anterior: null, status_novo: 'RECEBIDO', observacao: 'Recebido para serviço de lataria e troca de pastilha.' },
-        { id: 'att-6', autor_id: 'usr-3', data_hora: new Date(Date.now() - 3600000 * 5).toISOString(), status_anterior: 'RECEBIDO', status_novo: 'EM_FUNILARIA', observacao: 'Aplicação de primer no para-choque.' }
-      ]
     }
   ]
 };
 
-// Initialize LocalStorage if empty
 const getLocalData = () => {
   const data = localStorage.getItem('shibuya_db');
   if (!data) {
@@ -134,167 +114,440 @@ const saveLocalData = (data) => {
   localStorage.setItem('shibuya_db', JSON.stringify(data));
 };
 
-// DATA ACCESS LAYER
+// Helper: Normalize profile string
+const mapPerfilFromDb = (p) => {
+  if (!p) return 'MECANICO';
+  const val = String(p).toUpperCase();
+  if (val === 'ADMINISTRADOR' || val === 'ADMIN') return 'ADMIN';
+  if (val === 'FUNILEIRO') return 'FUNILEIRO';
+  return 'MECANICO';
+};
+
+const mapPerfilToDb = (p) => {
+  if (p === 'ADMIN') return 'administrador';
+  if (p === 'FUNILEIRO') return 'funileiro';
+  return 'mecanico';
+};
+
+// Helper: Normalize OS status strings
+const mapStatusFromDb = (s) => {
+  if (!s) return 'RECEBIDO';
+  return String(s).toUpperCase();
+};
+
+const mapStatusToDb = (s) => {
+  if (!s) return 'recebido';
+  return String(s).toLowerCase();
+};
+
+// Local storage parts stock map for persistent stock management
+const getLocalPartStockMap = () => {
+  try {
+    const raw = localStorage.getItem('shibuya_part_stocks');
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+const setLocalPartStockMap = (map) => {
+  localStorage.setItem('shibuya_part_stocks', JSON.stringify(map));
+};
+
 export const db = {
+  // USERS
+  async getUsers() {
+    if (supabase) {
+      const { data, error } = await supabase.from('usuarios').select('*').order('nome', { ascending: true });
+      if (!error && data && data.length > 0) {
+        return data.map(u => ({
+          ...u,
+          perfil: mapPerfilFromDb(u.perfil)
+        }));
+      }
+    }
+    return getLocalData().users;
+  },
+
+  async addUser(userData) {
+    const newDbUser = {
+      nome: userData.nome,
+      login: userData.login,
+      senha_hash: userData.senha || userData.senha_hash || '123456',
+      perfil: mapPerfilToDb(userData.perfil),
+      ativo: userData.ativo !== undefined ? userData.ativo : true
+    };
+
+    if (supabase) {
+      const { data, error } = await supabase.from('usuarios').insert([newDbUser]).select();
+      if (!error && data && data[0]) {
+        return {
+          ...data[0],
+          perfil: mapPerfilFromDb(data[0].perfil)
+        };
+      }
+    }
+
+    const local = getLocalData();
+    const newUser = {
+      id: 'usr-' + Date.now(),
+      nome: userData.nome,
+      login: userData.login,
+      senha_hash: userData.senha || '123456',
+      perfil: userData.perfil || 'MECANICO',
+      ativo: true
+    };
+    local.users.push(newUser);
+    saveLocalData(local);
+    return newUser;
+  },
+
+  async deleteUser(userId) {
+    if (supabase) {
+      const { error } = await supabase.from('usuarios').delete().eq('id', userId);
+      if (!error) return true;
+    }
+
+    const local = getLocalData();
+    local.users = local.users.filter(u => u.id !== userId);
+    saveLocalData(local);
+    return true;
+  },
+
   // CLIENTS
   async getClients() {
     if (supabase) {
-      const { data, error } = await supabase.from('cliente').select('*').order('criado_em', { ascending: false });
-      if (!error) return data;
+      const { data, error } = await supabase.from('clientes').select('*').order('criado_em', { ascending: false });
+      if (!error && data) return data;
     }
     return getLocalData().clients;
   },
 
   async addClient(clientData) {
-    const newClient = {
-      id: 'cli-' + Date.now(),
+    const newClientObj = {
       nome: clientData.nome,
       telefone: clientData.telefone,
       cpf: clientData.cpf || null,
-      endereco: clientData.endereco || null,
-      criado_em: new Date().toISOString()
+      endereco: clientData.endereco || null
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('cliente').insert([newClient]).select();
-      if (!error && data) return data[0];
+      const { data, error } = await supabase.from('clientes').insert([newClientObj]).select();
+      if (!error && data && data[0]) return data[0];
     }
 
     const local = getLocalData();
-    local.clients.unshift(newClient);
+    const localClient = {
+      id: 'cli-' + Date.now(),
+      ...newClientObj,
+      criado_em: new Date().toISOString()
+    };
+    local.clients.unshift(localClient);
     saveLocalData(local);
-    return newClient;
+    return localClient;
   },
 
   // VEHICLES
   async getVehicles() {
     if (supabase) {
-      const { data, error } = await supabase.from('veiculo').select('*').order('criado_em', { ascending: false });
-      if (!error) return data;
+      const { data, error } = await supabase.from('veiculos').select('*').order('criado_em', { ascending: false });
+      if (!error && data) return data;
     }
     return getLocalData().vehicles;
   },
 
   async addVehicle(vehicleData) {
-    const newVehicle = {
-      id: 'vec-' + Date.now(),
+    const formattedPlate = (vehicleData.placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const newVehObj = {
       cliente_id: vehicleData.cliente_id,
-      placa: vehicleData.placa.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+      placa: formattedPlate,
       modelo: vehicleData.modelo,
       cor: vehicleData.cor,
       ano: vehicleData.ano ? parseInt(vehicleData.ano) : null,
-      observacoes: vehicleData.observacoes || '',
-      criado_em: new Date().toISOString()
+      observacoes: vehicleData.observacoes || ''
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('veiculo').insert([newVehicle]).select();
-      if (!error && data) return data[0];
+      const { data, error } = await supabase.from('veiculos').insert([newVehObj]).select();
+      if (!error && data && data[0]) return data[0];
     }
 
     const local = getLocalData();
-    local.vehicles.unshift(newVehicle);
+    const localVeh = {
+      id: 'vec-' + Date.now(),
+      ...newVehObj,
+      criado_em: new Date().toISOString()
+    };
+    local.vehicles.unshift(localVeh);
     saveLocalData(local);
-    return newVehicle;
+    return localVeh;
   },
 
   // PLATE VERIFICATION
   async getPlateVerifications() {
     if (supabase) {
-      const { data, error } = await supabase.from('verificacao_placa').select('*').order('data_hora', { ascending: false });
-      if (!error) return data;
+      const { data, error } = await supabase.from('verificacoes_placa').select('*').order('data_hora', { ascending: false });
+      if (!error && data) {
+        return data.map(v => ({
+          ...v,
+          responsavel_id: v.usuario_id || v.responsavel_id,
+          status_consulta: v.observacao ? 'SEM_RESTRICAO' : 'SEM_RESTRICAO'
+        }));
+      }
     }
     return getLocalData().plateVerifications;
   },
 
   async addPlateVerification(verification) {
     const record = {
-      id: 'ver-' + Date.now(),
       veiculo_id: verification.veiculo_id,
       os_id: verification.os_id || null,
+      usuario_id: verification.responsavel_id || verification.usuario_id,
       data_hora: new Date().toISOString(),
-      responsavel_id: verification.responsavel_id,
-      status_consulta: verification.status_consulta || 'SEM_RESTRICAO',
       observacao: verification.observacao || 'Verificação efetuada.'
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('verificacao_placa').insert([record]).select();
-      if (!error && data) return data[0];
+      const { data, error } = await supabase.from('verificacoes_placa').insert([record]).select();
+      if (!error && data && data[0]) {
+        return {
+          ...data[0],
+          responsavel_id: data[0].usuario_id,
+          status_consulta: 'SEM_RESTRICAO'
+        };
+      }
     }
 
     const local = getLocalData();
-    local.plateVerifications.unshift(record);
+    const localRecord = {
+      id: 'ver-' + Date.now(),
+      ...record,
+      responsavel_id: verification.responsavel_id,
+      status_consulta: verification.status_consulta || 'SEM_RESTRICAO'
+    };
+    local.plateVerifications.unshift(localRecord);
     saveLocalData(local);
-    return record;
+    return localRecord;
   },
 
   // PARTS
   async getParts() {
+    const stockMap = getLocalPartStockMap();
+
     if (supabase) {
-      const { data, error } = await supabase.from('peca').select('*').order('nome', { ascending: true });
-      if (!error) return data;
+      const { data, error } = await supabase.from('pecas_catalogo').select('*').order('nome', { ascending: true });
+      if (!error && data) {
+        return data.map(p => ({
+          ...p,
+          estoque_atual: stockMap[p.id] !== undefined ? stockMap[p.id] : (p.estoque_atual !== undefined ? p.estoque_atual : 10)
+        }));
+      }
     }
-    return getLocalData().parts;
+
+    const local = getLocalData();
+    return local.parts.map(p => ({
+      ...p,
+      estoque_atual: stockMap[p.id] !== undefined ? stockMap[p.id] : (p.estoque_atual !== undefined ? p.estoque_atual : 10)
+    }));
   },
 
   async addPart(partData) {
-    const newPart = {
-      id: 'pec-' + Date.now(),
+    const stockMap = getLocalPartStockMap();
+    const stockVal = parseInt(partData.estoque_atual || 0);
+
+    const newPartObj = {
       codigo_interno: partData.codigo_interno,
       nome: partData.nome,
       modelo_compativel: partData.modelo_compativel || '',
       preco_min: parseFloat(partData.preco_min || 0),
       preco_max: parseFloat(partData.preco_max || 0),
       preco_medio: parseFloat(partData.preco_medio || 0),
-      estoque_atual: parseInt(partData.estoque_atual || 0),
-      ultima_atualizacao: new Date().toISOString()
+      atualizado_em: new Date().toISOString()
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('peca').insert([newPart]).select();
-      if (!error && data) return data[0];
+      const { data, error } = await supabase.from('pecas_catalogo').insert([newPartObj]).select();
+      if (!error && data && data[0]) {
+        stockMap[data[0].id] = stockVal;
+        setLocalPartStockMap(stockMap);
+        return {
+          ...data[0],
+          estoque_atual: stockVal
+        };
+      }
     }
 
     const local = getLocalData();
-    local.parts.push(newPart);
+    const localPart = {
+      id: 'pec-' + Date.now(),
+      ...newPartObj,
+      estoque_atual: stockVal,
+      ultima_atualizacao: new Date().toISOString()
+    };
+    stockMap[localPart.id] = stockVal;
+    setLocalPartStockMap(stockMap);
+
+    local.parts.push(localPart);
     saveLocalData(local);
-    return newPart;
+    return localPart;
+  },
+
+  async updatePartStock(partId, newStock) {
+    const stockMap = getLocalPartStockMap();
+    stockMap[partId] = Math.max(0, parseInt(newStock || 0));
+    setLocalPartStockMap(stockMap);
+
+    const local = getLocalData();
+    const idx = local.parts.findIndex(p => p.id === partId);
+    if (idx !== -1) {
+      local.parts[idx].estoque_atual = stockMap[partId];
+      saveLocalData(local);
+    }
+    return true;
+  },
+
+  async updatePart(partId, partData) {
+    const stockMap = getLocalPartStockMap();
+    if (partData.estoque_atual !== undefined) {
+      stockMap[partId] = Math.max(0, parseInt(partData.estoque_atual));
+      setLocalPartStockMap(stockMap);
+    }
+
+    const updateObj = {
+      codigo_interno: partData.codigo_interno,
+      nome: partData.nome,
+      modelo_compativel: partData.modelo_compativel || '',
+      preco_min: parseFloat(partData.preco_min || 0),
+      preco_max: parseFloat(partData.preco_max || 0),
+      preco_medio: parseFloat(partData.preco_medio || 0),
+      atualizado_em: new Date().toISOString()
+    };
+
+    if (supabase) {
+      await supabase.from('pecas_catalogo').update(updateObj).eq('id', partId);
+    }
+
+    const local = getLocalData();
+    const idx = local.parts.findIndex(p => p.id === partId);
+    if (idx !== -1) {
+      local.parts[idx] = { ...local.parts[idx], ...updateObj, estoque_atual: stockMap[partId] };
+      saveLocalData(local);
+    }
+    return true;
   },
 
   // ORDERS (OS)
   async getOSList() {
     if (supabase) {
-      const { data, error } = await supabase.from('ordem_servico').select('*').order('criado_em', { ascending: false });
-      if (!error) return data;
+      const { data: osData, error: osErr } = await supabase.from('ordens_servico').select('*').order('criado_em', { ascending: false });
+      if (!osErr && osData) {
+        const { data: pecasData } = await supabase.from('os_pecas').select('*');
+        const { data: timelineData } = await supabase.from('os_atualizacoes').select('*').order('criado_em', { ascending: false });
+
+        return osData.map(os => {
+          const osPecas = (pecasData || []).filter(p => p.os_id === os.id).map(p => ({
+            id: p.id,
+            peca_id: p.peca_id,
+            quantidade: parseFloat(p.quantidade || 1),
+            preco_unitario: parseFloat(p.preco_unitario || 0),
+            fornecedor: p.fornecedor || ''
+          }));
+
+          const osTimeline = (timelineData || []).filter(t => t.os_id === os.id).map(t => ({
+            id: t.id,
+            autor_id: t.usuario_id,
+            data_hora: t.criado_em,
+            status_anterior: mapStatusFromDb(t.status_anterior),
+            status_novo: mapStatusFromDb(t.status_novo),
+            observacao: t.observacao || ''
+          }));
+
+          return {
+            ...os,
+            status: mapStatusFromDb(os.status),
+            mao_de_obra: parseFloat(os.valor_mao_obra || os.mao_de_obra || 0),
+            valor_total: parseFloat(os.subtotal || os.valor_total || (parseFloat(os.valor_mao_obra || 0) + parseFloat(os.valor_pecas || 0))),
+            responsavel_id: os.criado_por,
+            pecas: osPecas,
+            timeline: osTimeline
+          };
+        });
+      }
     }
     return getLocalData().orders;
   },
 
   async createOS(osData, user) {
     const local = getLocalData();
-    const nextNum = local.orders.length > 0 ? Math.max(...local.orders.map(o => o.numero || 1000)) + 1 : 1001;
+    const nextNum = Math.floor(1000 + Math.random() * 9000);
 
-    const newOS = {
+    const osObj = {
+      numero: nextNum,
+      cliente_id: osData.cliente_id,
+      veiculo_id: osData.veiculo_id,
+      data_entrada: new Date().toISOString(),
+      previsao_entrega: osData.previsao_entrega || null,
+      status: mapStatusToDb(osData.status || 'RECEBIDO'),
+      valor_mao_obra: parseFloat(osData.mao_de_obra || 0),
+      valor_pecas: 0,
+      subtotal: parseFloat(osData.mao_de_obra || 0),
+      criado_por: user?.id || '40c4b8c5-d36d-406b-919f-5a28aedf6cd1'
+    };
+
+    if (supabase) {
+      const { data, error } = await supabase.from('ordens_servico').insert([osObj]).select();
+      if (!error && data && data[0]) {
+        const createdOS = data[0];
+
+        // Add initial timeline
+        await supabase.from('os_atualizacoes').insert([{
+          os_id: createdOS.id,
+          usuario_id: user?.id || '40c4b8c5-d36d-406b-919f-5a28aedf6cd1',
+          tipo: 'mudanca_status',
+          status_anterior: null,
+          status_novo: 'recebido',
+          observacao: osData.observacao_inicial || 'OS criada e veículo recebido.'
+        }]);
+
+        return {
+          ...createdOS,
+          status: 'RECEBIDO',
+          mao_de_obra: parseFloat(createdOS.valor_mao_obra || 0),
+          valor_total: parseFloat(createdOS.subtotal || 0),
+          responsavel_id: createdOS.criado_por,
+          pecas: [],
+          timeline: [{
+            id: 'att-' + Date.now(),
+            autor_id: user?.id,
+            data_hora: new Date().toISOString(),
+            status_anterior: null,
+            status_novo: 'RECEBIDO',
+            observacao: osData.observacao_inicial || 'OS criada e veículo recebido.'
+          }]
+        };
+      }
+    }
+
+    const localOS = {
       id: 'os-' + Date.now(),
       numero: nextNum,
       cliente_id: osData.cliente_id,
       veiculo_id: osData.veiculo_id,
-      responsavel_id: osData.responsavel_id || user.id,
+      responsavel_id: osData.responsavel_id || user?.id,
       tipo_servico: osData.tipo_servico || 'MECANICA',
       data_entrada: new Date().toISOString(),
       previsao_entrega: osData.previsao_entrega || null,
       mao_de_obra: parseFloat(osData.mao_de_obra || 0),
       valor_total: parseFloat(osData.mao_de_obra || 0),
       status: 'RECEBIDO',
-      criado_por: user.id,
+      criado_por: user?.id,
       criado_em: new Date().toISOString(),
       atualizado_em: new Date().toISOString(),
       pecas: [],
       timeline: [
         {
           id: 'att-' + Date.now(),
-          autor_id: user.id,
+          autor_id: user?.id,
           data_hora: new Date().toISOString(),
           status_anterior: null,
           status_novo: 'RECEBIDO',
@@ -303,100 +556,200 @@ export const db = {
       ]
     };
 
+    local.orders.unshift(localOS);
+    saveLocalData(local);
+    return localOS;
+  },
+
+  async updateOSDetails(osId, updateFields) {
     if (supabase) {
-      const { data, error } = await supabase.from('ordem_servico').insert([newOS]).select();
-      if (!error && data) return data[0];
+      const fields = {};
+      if (updateFields.mao_de_obra !== undefined) fields.valor_mao_obra = parseFloat(updateFields.mao_de_obra);
+      if (updateFields.valor_total !== undefined) fields.subtotal = parseFloat(updateFields.valor_total);
+      if (updateFields.previsao_entrega !== undefined) fields.previsao_entrega = updateFields.previsao_entrega;
+
+      await supabase.from('ordens_servico').update({ ...fields, atualizado_em: new Date().toISOString() }).eq('id', osId);
     }
 
-    local.orders.unshift(newOS);
-    saveLocalData(local);
-    return newOS;
+    const local = getLocalData();
+    const idx = local.orders.findIndex(o => o.id === osId);
+    if (idx !== -1) {
+      if (updateFields.mao_de_obra !== undefined) local.orders[idx].mao_de_obra = parseFloat(updateFields.mao_de_obra);
+      if (updateFields.valor_total !== undefined) local.orders[idx].valor_total = parseFloat(updateFields.valor_total);
+      if (updateFields.previsao_entrega !== undefined) local.orders[idx].previsao_entrega = updateFields.previsao_entrega;
+      saveLocalData(local);
+    }
+    return true;
   },
 
   async updateOSStatus(osId, newStatus, observacao, user) {
-    const local = getLocalData();
-    const osIndex = local.orders.findIndex(o => o.id === osId);
-    if (osIndex === -1) return null;
+    const dbStatus = mapStatusToDb(newStatus);
 
-    const os = local.orders[osIndex];
-    const prevStatus = os.status;
-    os.status = newStatus;
-    os.atualizado_em = new Date().toISOString();
+    if (supabase) {
+      const { data: currentOS } = await supabase.from('ordens_servico').select('status').eq('id', osId).single();
+      const prevStatusDb = currentOS?.status || null;
 
-    if (newStatus === 'ENTREGUE') {
-      os.entregue_em = new Date().toISOString();
+      await supabase.from('ordens_servico').update({
+        status: dbStatus,
+        atualizado_em: new Date().toISOString()
+      }).eq('id', osId);
+
+      await supabase.from('os_atualizacoes').insert([{
+        os_id: osId,
+        usuario_id: user?.id || '40c4b8c5-d36d-406b-919f-5a28aedf6cd1',
+        tipo: 'mudanca_status',
+        status_anterior: prevStatusDb,
+        status_novo: dbStatus,
+        observacao: observacao || `Status alterado de ${mapStatusFromDb(prevStatusDb)} para ${newStatus}`
+      }]);
     }
 
-    const timelineEntry = {
-      id: 'att-' + Date.now(),
-      autor_id: user.id,
-      data_hora: new Date().toISOString(),
-      status_anterior: prevStatus,
-      status_novo: newStatus,
-      observacao: observacao || `Status alterado de ${prevStatus} para ${newStatus}`
-    };
+    const local = getLocalData();
+    const osIndex = local.orders.findIndex(o => o.id === osId);
+    if (osIndex !== -1) {
+      const os = local.orders[osIndex];
+      const prevStatus = os.status;
+      os.status = newStatus;
+      os.atualizado_em = new Date().toISOString();
 
-    if (!os.timeline) os.timeline = [];
-    os.timeline.unshift(timelineEntry);
+      const timelineEntry = {
+        id: 'att-' + Date.now(),
+        autor_id: user?.id,
+        data_hora: new Date().toISOString(),
+        status_anterior: prevStatus,
+        status_novo: newStatus,
+        observacao: observacao || `Status alterado de ${prevStatus} para ${newStatus}`
+      };
 
-    local.orders[osIndex] = os;
-    saveLocalData(local);
-    return os;
+      if (!os.timeline) os.timeline = [];
+      os.timeline.unshift(timelineEntry);
+
+      local.orders[osIndex] = os;
+      saveLocalData(local);
+      return os;
+    }
+    return null;
   },
 
   async addOSTimelineNote(osId, observacao, user) {
+    if (supabase) {
+      const { data: currentOS } = await supabase.from('ordens_servico').select('status').eq('id', osId).single();
+      const statusDb = currentOS?.status || 'recebido';
+
+      await supabase.from('os_atualizacoes').insert([{
+        os_id: osId,
+        usuario_id: user?.id || '40c4b8c5-d36d-406b-919f-5a28aedf6cd1',
+        tipo: 'mudanca_status',
+        status_anterior: statusDb,
+        status_novo: statusDb,
+        observacao: observacao
+      }]);
+    }
+
     const local = getLocalData();
     const osIndex = local.orders.findIndex(o => o.id === osId);
-    if (osIndex === -1) return null;
+    if (osIndex !== -1) {
+      const os = local.orders[osIndex];
+      const timelineEntry = {
+        id: 'att-' + Date.now(),
+        autor_id: user?.id,
+        data_hora: new Date().toISOString(),
+        status_anterior: os.status,
+        status_novo: os.status,
+        observacao: observacao
+      };
 
-    const os = local.orders[osIndex];
-    const timelineEntry = {
-      id: 'att-' + Date.now(),
-      autor_id: user.id,
-      data_hora: new Date().toISOString(),
-      status_anterior: os.status,
-      status_novo: os.status,
-      observacao: observacao
-    };
+      if (!os.timeline) os.timeline = [];
+      os.timeline.unshift(timelineEntry);
+      os.atualizado_em = new Date().toISOString();
 
-    if (!os.timeline) os.timeline = [];
-    os.timeline.unshift(timelineEntry);
-    os.atualizado_em = new Date().toISOString();
-
-    local.orders[osIndex] = os;
-    saveLocalData(local);
-    return os;
+      local.orders[osIndex] = os;
+      saveLocalData(local);
+      return os;
+    }
+    return null;
   },
 
   async addPartToOS(osId, pecaId, quantidade, precoUnitario, fornecedor, user) {
+    const qty = parseFloat(quantidade || 1);
+    const unitPrice = parseFloat(precoUnitario || 0);
+    const totalPartVal = qty * unitPrice;
+
+    // Deduct stock quantity automatically (Alteração #4)
+    const currentParts = await this.getParts();
+    const matchedPart = currentParts.find(p => p.id === pecaId);
+    if (matchedPart) {
+      const newStock = Math.max(0, (matchedPart.estoque_atual || 0) - qty);
+      await this.updatePartStock(pecaId, newStock);
+    }
+
+    if (supabase) {
+      await supabase.from('os_pecas').insert([{
+        os_id: osId,
+        peca_id: pecaId,
+        descricao: matchedPart?.nome || 'Peça Utilizada',
+        quantidade: qty,
+        preco_unitario: unitPrice,
+        fornecedor: fornecedor || '',
+        peca_do_cliente: false,
+        valor_total: totalPartVal
+      }]);
+
+      // Recalculate OS values in Supabase
+      const { data: allPecas } = await supabase.from('os_pecas').select('valor_total').eq('os_id', osId);
+      const pecasSum = (allPecas || []).reduce((acc, curr) => acc + (parseFloat(curr.valor_total) || 0), 0);
+
+      const { data: osRecord } = await supabase.from('ordens_servico').select('valor_mao_obra').eq('id', osId).single();
+      const maoObra = parseFloat(osRecord?.valor_mao_obra || 0);
+      const newSubtotal = maoObra + pecasSum;
+
+      await supabase.from('ordens_servico').update({
+        valor_pecas: pecasSum,
+        subtotal: newSubtotal,
+        atualizado_em: new Date().toISOString()
+      }).eq('id', osId);
+    }
+
     const local = getLocalData();
     const osIndex = local.orders.findIndex(o => o.id === osId);
-    if (osIndex === -1) return null;
+    if (osIndex !== -1) {
+      const os = local.orders[osIndex];
+      if (!os.pecas) os.pecas = [];
 
-    const os = local.orders[osIndex];
-    if (!os.pecas) os.pecas = [];
+      const newOsPeca = {
+        id: 'ospec-' + Date.now(),
+        peca_id: pecaId,
+        quantidade: qty,
+        preco_unitario: unitPrice,
+        fornecedor: fornecedor || ''
+      };
 
-    const newOsPeca = {
-      id: 'ospec-' + Date.now(),
-      peca_id: pecaId,
-      quantidade: parseFloat(quantidade),
-      preco_unitario: parseFloat(precoUnitario),
-      fornecedor: fornecedor || ''
-    };
+      os.pecas.push(newOsPeca);
 
-    os.pecas.push(newOsPeca);
+      const pecasTotal = os.pecas.reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
+      os.valor_total = pecasTotal + parseFloat(os.mao_de_obra || 0);
+      os.atualizado_em = new Date().toISOString();
 
-    // Recalculate Total
-    const pecasTotal = os.pecas.reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
-    os.valor_total = pecasTotal + parseFloat(os.mao_de_obra || 0);
-    os.atualizado_em = new Date().toISOString();
+      local.orders[osIndex] = os;
+      saveLocalData(local);
+      return os;
+    }
 
-    local.orders[osIndex] = os;
-    saveLocalData(local);
-    return os;
+    return null;
   },
 
-  async getUsers() {
-    return getLocalData().users;
+  async deleteOS(osId) {
+    if (supabase) {
+      await supabase.from('os_pecas').delete().eq('os_id', osId);
+      await supabase.from('os_atualizacoes').delete().eq('os_id', osId);
+      await supabase.from('verificacoes_placa').delete().eq('os_id', osId);
+      const { error } = await supabase.from('ordens_servico').delete().eq('id', osId);
+      if (!error) return true;
+    }
+
+    const local = getLocalData();
+    local.orders = local.orders.filter(o => o.id !== osId);
+    saveLocalData(local);
+    return true;
   }
 };

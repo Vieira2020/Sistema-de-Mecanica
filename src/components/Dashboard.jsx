@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/supabase';
-import { Wrench, Clock, DollarSign, Package, AlertTriangle, CheckCircle2, ChevronRight, Hammer, ShieldCheck } from 'lucide-react';
+import { Wrench, Clock, DollarSign, Package, AlertTriangle, ChevronRight, Hammer, ShieldCheck, Users, UserPlus } from 'lucide-react';
 
-export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
+export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS, onNavigateToTab }) => {
   const [orders, setOrders] = useState([]);
   const [parts, setParts] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -55,7 +55,7 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
+      {/* Top Banner & Admin Shortcut Center (Alteração #5) */}
       <div className="bg-[#032326] text-white p-6 rounded-xl shadow-md border-l-8 border-[#8C4580] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold font-serif text-white">
@@ -65,20 +65,27 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
             Visão consolidada de serviços de mecânica, funilaria e faturamento.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onNavigateToTab && onNavigateToTab('users')}
+            className="bg-[#8C4580] hover:bg-[#6b3361] text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition"
+          >
+            <UserPlus className="w-4 h-4" />
+            Cadastrar / Gerenciar Usuários
+          </button>
           <span className="bg-[#125938] text-white px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 border border-emerald-700">
             <ShieldCheck className="w-4 h-4 text-[#8C4580]" />
-            Ambiente Seguro Admin
+            Atalhos Administrativos Protegidos
           </span>
         </div>
       </div>
 
-      {/* Primary KPI Cards */}
+      {/* Primary KPI Cards with Hover Previews (Alteração #9) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Open OS */}
         <div
           onClick={() => onNavigateToOS && onNavigateToOS()}
-          className="bg-[#032326] text-white p-5 rounded-xl shadow-md border-t-4 border-[#308C50] cursor-pointer hover:scale-[1.02] transition"
+          className="relative group bg-[#032326] text-white p-5 rounded-xl shadow-md border-t-4 border-[#308C50] cursor-pointer hover:scale-[1.02] transition"
         >
           <div className="flex justify-between items-center mb-2">
             <span className="text-xs uppercase font-sans tracking-wider text-gray-300">OS em Aberto</span>
@@ -90,12 +97,20 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
           <p className="text-xs text-gray-300 mt-2 flex items-center gap-1">
             <span>Serviços em andamento na oficina</span>
           </p>
+
+          {/* Hover Tooltip/Preview (Alteração #9) */}
+          <div className="absolute left-0 top-full mt-2 hidden group-hover:block w-72 bg-gray-900 text-white text-xs p-3 rounded-lg shadow-xl z-30 border border-emerald-700">
+            <p className="font-bold border-b border-gray-700 pb-1 mb-1 text-emerald-400">Resumo de OS em Aberto</p>
+            <p>Mecânica: <span className="font-mono font-bold text-white">{statusCounts.EM_MECANICA}</span></p>
+            <p>Funilaria: <span className="font-mono font-bold text-white">{statusCounts.EM_FUNILARIA}</span></p>
+            <p>Aguardando Peças: <span className="font-mono font-bold text-amber-300">{statusCounts.AGUARDANDO_PECAS}</span></p>
+          </div>
         </div>
 
         {/* Delayed OS */}
         <div
           onClick={() => onSelectStatusFilter && onSelectStatusFilter('ATRASADOS')}
-          className="bg-[#032326] text-white p-5 rounded-xl shadow-md border-t-4 border-amber-500 cursor-pointer hover:scale-[1.02] transition"
+          className="relative group bg-[#032326] text-white p-5 rounded-xl shadow-md border-t-4 border-amber-500 cursor-pointer hover:scale-[1.02] transition"
         >
           <div className="flex justify-between items-center mb-2">
             <span className="text-xs uppercase font-sans tracking-wider text-gray-300">OS Atrasadas</span>
@@ -108,10 +123,24 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
             <Clock className="w-3.5 h-3.5" />
             <span>Ultrapassaram a previsão de entrega</span>
           </p>
+
+          {/* Hover Tooltip/Preview (Alteração #9) */}
+          <div className="absolute left-0 top-full mt-2 hidden group-hover:block w-72 bg-gray-900 text-white text-xs p-3 rounded-lg shadow-xl z-30 border border-amber-500">
+            <p className="font-bold border-b border-gray-700 pb-1 mb-1 text-amber-400">Próximos Vencimentos</p>
+            {delayedOrders.length === 0 ? (
+              <p className="text-emerald-400">Nenhuma OS em atraso!</p>
+            ) : (
+              delayedOrders.slice(0, 3).map(o => (
+                <p key={o.id} className="truncate">
+                  <span className="font-mono font-bold text-amber-300">OS #{o.numero}:</span> {o.previsao_entrega}
+                </p>
+              ))
+            )}
+          </div>
         </div>
 
         {/* Total Revenue */}
-        <div className="bg-[#032326] text-white p-5 rounded-xl shadow-md border-t-4 border-[#8C4580]">
+        <div className="relative group bg-[#032326] text-white p-5 rounded-xl shadow-md border-t-4 border-[#8C4580]">
           <div className="flex justify-between items-center mb-2">
             <span className="text-xs uppercase font-sans tracking-wider text-gray-300">Faturamento Total</span>
             <div className="p-2 bg-[#8C4580]/30 rounded-lg">
@@ -124,10 +153,17 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
           <p className="text-xs text-gray-300 mt-2">
             Mão de obra: R$ {totalMaoDeObra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
+
+          {/* Hover Tooltip/Preview (Alteração #9) */}
+          <div className="absolute left-0 top-full mt-2 hidden group-hover:block w-72 bg-gray-900 text-white text-xs p-3 rounded-lg shadow-xl z-30 border border-[#8C4580]">
+            <p className="font-bold border-b border-gray-700 pb-1 mb-1 text-[#8C4580]">Composição Financeira</p>
+            <p>Mão de Obra Total: <span className="font-mono font-bold text-emerald-400">R$ {totalMaoDeObra.toFixed(2)}</span></p>
+            <p>Peças Utilizadas: <span className="font-mono font-bold text-purple-300">R$ {(totalFaturamento - totalMaoDeObra).toFixed(2)}</span></p>
+          </div>
         </div>
 
         {/* Parts Count */}
-        <div className="bg-[#032326] text-white p-5 rounded-xl shadow-md border-t-4 border-emerald-500">
+        <div className="relative group bg-[#032326] text-white p-5 rounded-xl shadow-md border-t-4 border-emerald-500">
           <div className="flex justify-between items-center mb-2">
             <span className="text-xs uppercase font-sans tracking-wider text-gray-300">Catálogo de Peças</span>
             <div className="p-2 bg-[#125938] rounded-lg">
@@ -138,6 +174,16 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
           <p className="text-xs text-emerald-300 mt-2">
             Itens cadastrados no sistema
           </p>
+
+          {/* Hover Tooltip/Preview (Alteração #9) */}
+          <div className="absolute left-0 top-full mt-2 hidden group-hover:block w-72 bg-gray-900 text-white text-xs p-3 rounded-lg shadow-xl z-30 border border-emerald-500">
+            <p className="font-bold border-b border-gray-700 pb-1 mb-1 text-emerald-400">Amostra do Catálogo</p>
+            {parts.slice(0, 3).map(p => (
+              <p key={p.id} className="truncate">
+                <span className="font-mono text-gray-400">{p.codigo_interno}:</span> {p.nome} ({p.estoque_atual} un)
+              </p>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -150,7 +196,7 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
               Onde estão os veículos agora? (Acompanhamento em Tempo Real)
             </h3>
             <p className="text-xs text-emerald-100">
-              Clique em um dos setores para filtrar a lista de veículos e Ordens de Serviço.
+              Passe o mouse para preview rápido ou clique em um setor para filtrar as Ordens de Serviço.
             </p>
           </div>
         </div>
@@ -170,13 +216,27 @@ export const Dashboard = ({ onSelectStatusFilter, onNavigateToOS }) => {
             <div
               key={item.id}
               onClick={() => onSelectStatusFilter && onSelectStatusFilter(item.id)}
-              className={`p-3 rounded-lg border text-white cursor-pointer hover:opacity-90 transition ${item.color}`}
+              className={`relative group p-3 rounded-lg border text-white cursor-pointer hover:opacity-90 transition ${item.color}`}
             >
               <div className="flex justify-between items-center">
                 <span className="text-xs font-sans text-gray-200">{item.title}</span>
                 <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
               </div>
               <p className="text-2xl font-bold font-mono mt-1">{item.count}</p>
+
+              {/* Hover Tooltip for each status stage (Alteração #9) */}
+              <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-56 bg-gray-900 text-white text-xs p-2.5 rounded shadow-xl z-30 border border-gray-700">
+                <p className="font-bold text-emerald-400 mb-1">{item.title} ({item.count} veículos)</p>
+                {orders.filter(o => o.status === item.id).length === 0 ? (
+                  <p className="text-gray-400 text-[11px]">Nenhum veículo nesta etapa.</p>
+                ) : (
+                  orders.filter(o => o.status === item.id).slice(0, 3).map(o => (
+                    <p key={o.id} className="text-[11px] truncate">
+                      • OS #{o.numero}
+                    </p>
+                  ))
+                )}
+              </div>
             </div>
           ))}
         </div>
