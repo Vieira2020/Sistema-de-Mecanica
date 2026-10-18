@@ -8,6 +8,7 @@ import { OSDetail } from './components/OSDetail';
 import { ClientsVehicles } from './components/ClientsVehicles';
 import { PlateVerification } from './components/PlateVerification';
 import { PartsCatalog } from './components/PartsCatalog';
+import { UserManagement } from './components/UserManagement';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { db } from './lib/supabase';
 
@@ -27,7 +28,7 @@ export const AppContent = () => {
   const [users, setUsers] = useState([]);
 
   useEffect(() => {
-    if (!isAdmin && activeTab === 'dashboard') {
+    if (!isAdmin && (activeTab === 'dashboard' || activeTab === 'users' || activeTab === 'plates' || activeTab === 'parts')) {
       setActiveTab('orders');
     }
   }, [isAdmin, activeTab]);
@@ -82,7 +83,7 @@ export const AppContent = () => {
         openSettings={() => setShowConfigModal(true)}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 transition-all duration-300 ease-in-out">
         {selectedOSId && currentOS ? (
           <OSDetail
             os={currentOS}
@@ -94,11 +95,12 @@ export const AppContent = () => {
             onRefresh={() => loadOSDetail(selectedOSId)}
           />
         ) : (
-          <>
+          <div className="animate-fadeIn">
             {activeTab === 'dashboard' && isAdmin && (
               <Dashboard
                 onSelectStatusFilter={handleSelectStatusFilterFromDash}
                 onNavigateToOS={handleOpenOSFromDash}
+                onNavigateToTab={(tab) => setActiveTab(tab)}
               />
             )}
 
@@ -120,12 +122,14 @@ export const AppContent = () => {
               />
             )}
 
+            {activeTab === 'users' && isAdmin && <UserManagement />}
+
             {activeTab === 'plates' && isAdmin && <PlateVerification />}
 
             {activeTab === 'parts' && isAdmin && (
               <PartsCatalog searchTerm={searchTerm} />
             )}
-          </>
+          </div>
         )}
       </main>
 
@@ -133,7 +137,7 @@ export const AppContent = () => {
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
           <p>© {new Date().getFullYear()} Shibuya Motores — Bragança Paulista, SP</p>
           <p className="font-mono text-gray-300">
-            1ª Versão — Sistema Integrado de Mecânica e Funilaria
+            Sistema Integrado de Mecânica e Funilaria
           </p>
         </div>
       </footer>

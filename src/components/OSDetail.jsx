@@ -17,7 +17,10 @@ import {
   Lock,
   Hammer,
   ShieldCheck,
-  FileText
+  FileText,
+  Trash2,
+  Edit,
+  Save
 } from 'lucide-react';
 
 const STATUS_FLOW = [
@@ -50,6 +53,10 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
   const [newStatus, setNewStatus] = useState(os.status);
   const [statusNote, setStatusNote] = useState('');
   const [techNote, setTechNote] = useState('');
+
+  // Editing labor cost & OS price in progress (Alteração #2)
+  const [isEditingFinancials, setIsEditingFinancials] = useState(false);
+  const [laborCostInput, setLaborCostInput] = useState(String(os.mao_de_obra || 0));
 
   const [showPartModal, setShowPartModal] = useState(false);
   const [partForm, setPartForm] = useState({
@@ -98,6 +105,14 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
     e.preventDefault();
     if (!partForm.peca_id || !partForm.quantidade) return;
 
+    // Check part stock level before or upon adding
+    const chosenPart = parts.find(p => p.id === partForm.peca_id);
+    const qty = parseFloat(partForm.quantidade || 1);
+    if (chosenPart && chosenPart.estoque_atual < qty) {
+      const confirmProceed = window.confirm(`Estoque atual desta peça é ${chosenPart.estoque_atual} un, mas você selecionou ${qty} un. Deseja continuar assim mesmo?`);
+      if (!confirmProceed) return;
+    }
+
     await db.addPartToOS(
       os.id,
       partForm.peca_id,
@@ -109,6 +124,29 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
 
     setShowPartModal(false);
     onRefresh();
+  };
+
+  // Update labor & recalculate total price while service is under process (Alteração #2)
+  const handleSaveFinancials = async () => {
+    const newLabor = parseFloat(laborCostInput) || 0;
+    const pecasSum = (os.pecas || []).reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0);
+    const newTotal = newLabor + pecasSum;
+
+    await db.updateOSDetails(os.id, {
+      mao_de_obra: newLabor,
+      valor_total: newTotal
+    });
+
+    setIsEditingFinancials(false);
+    onRefresh();
+  };
+
+  // Delete OS in progress (Alteração #15)
+  const handleDeleteOS = async () => {
+    if (window.confirm(`Tem certeza que deseja excluir a Ordem de Serviço #${os.numero} em andamento? Esta ação não poderá ser desfeita.`)) {
+      await db.deleteOS(os.id);
+      onBack();
+    }
   };
 
   const currentStatusIndex = STATUS_FLOW.indexOf(os.status);
@@ -137,27 +175,84 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
           </div>
         </div>
 
-        {/* Financial Badge - Admin Only */}
-        {isAdmin ? (
-          <div className="bg-[#125938] px-4 py-2 rounded-lg text-right border border-emerald-700">
-            <span className="text-[10px] text-emerald-200 uppercase tracking-wider block">Valor Total da OS</span>
-            <span className="text-xl font-bold font-mono text-white">
-              R$ {parseFloat(os.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-        ) : (
-          <div className="bg-amber-950/80 px-3 py-1.5 rounded-lg text-amber-200 text-xs flex items-center gap-1.5 border border-amber-800">
-            <Lock className="w-4 h-4 text-amber-400" />
-            <span>Valores e dados financeiros restritos ao Admin (RF-003)</span>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Delete OS Button (Alteração #15) */}
+          {isAdmin && (
+            <button
+              onClick={handleDeleteOS}
+              className="bg-red-900/80 hover:bg-red-800 text-red-100 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-red-700 transition"
+              title="Excluir Ordem de Serviço em execução"
+            >
+              <Trash2 className="w-4 h-4" />
+              Excluir OS
+            </button>
+          )}
+
+          {/* Financial Badge - Admin Only with Edit option (Alteração #2) */}
+          {isAdmin ? (
+            <div className="bg-[#125938] px-4 py-2 rounded-lg text-right border border-emerald-700">
+              <span className="text-[10px] text-emerald-200 uppercase tracking-wider block">Valor Total da OS</span>
+              <span className="text-xl font-bold font-mono text-white">
+                R$ {parseFloat(os.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          ) : (
+            <div className="bg-amber-950/80 px-3 py-1.5 rounded-lg text-amber-200 text-xs flex items-center gap-1.5 border border-amber-800">
+              <Lock className="w-4 h-4 text-amber-400" />
+              <span>Valores restritos ao Admin</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Status Progress Stepper */}
+      {/* Dynamic Financial Adjustment Banner for Admin (Alteração #2) */}
+      {isAdmin && (
+        <div className="bg-white p-4 rounded-xl shadow border border-emerald-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+          <div>
+            <h4 className="font-bold text-[#06402F] text-sm flex items-center gap-1.5">
+              <DollarSign className="w-4 h-4 text-[#8C4580]" />
+              Ajuste Dinâmico de Valores do Atendimento
+            </h4>
+            <p className="text-gray-600">
+              Mão de Obra Atual: <strong>R$ {parseFloat(os.mao_de_obra || 0).toFixed(2)}</strong> | Peças Vinculadas:{' '}
+              <strong>R$ {((os.pecas || []).reduce((sum, p) => sum + (p.quantidade * p.preco_unitario), 0)).toFixed(2)}</strong>
+            </p>
+          </div>
+
+          {isEditingFinancials ? (
+            <div className="flex items-center gap-2">
+              <label className="font-bold text-gray-700">Nova Mão de Obra (R$):</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={laborCostInput}
+                onChange={(e) => setLaborCostInput(e.target.value)}
+                className="w-28 border rounded p-1.5 font-mono font-bold text-[#06402F]"
+              />
+              <button
+                onClick={handleSaveFinancials}
+                className="bg-[#125938] hover:bg-[#06402F] text-white px-3 py-1.5 rounded font-bold flex items-center gap-1 shadow"
+              >
+                <Save className="w-3.5 h-3.5" /> Salvar Preço
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsEditingFinancials(true)}
+              className="bg-[#125938] hover:bg-[#06402F] text-white px-3 py-1.5 rounded font-bold flex items-center gap-1 shadow"
+            >
+              <Edit className="w-3.5 h-3.5" /> Alterar Valor de Mão de Obra
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Status Progress Stepper (Alteração #16) */}
       <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
         <h3 className="text-sm font-bold font-serif text-[#06402F] mb-4 flex items-center gap-2">
           <Clock className="w-4 h-4 text-[#8C4580]" />
-          Fluxo do Atendimento (9 Etapas)
+          Fluxo do Atendimento (9 Etapas Sequenciais)
         </h3>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
@@ -176,7 +271,8 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                     : 'bg-gray-100 text-gray-500 border-gray-200'
                 }`}
               >
-                <div className="text-[10px] opacity-80 uppercase tracking-wider">{idx + 1}</div>
+                {/* Step number badge matching exact stage index (Alteração #16) */}
+                <div className="text-[10px] opacity-90 font-mono uppercase tracking-wider font-extrabold">Etapa {idx + 1}</div>
                 <div className="leading-tight mt-0.5">{STATUS_LABELS[st].replace(/^\d+\.\s*/, '')}</div>
               </div>
             );
@@ -219,7 +315,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                   </div>
                 ) : (
                   <p className="text-[11px] text-amber-700 italic mt-1 bg-amber-50 p-1.5 rounded border border-amber-200">
-                    Telefone, CPF e endereço ocultos para o perfil Mecânico (RF-003).
+                    Telefone, CPF e endereço ocultos para perfil Mecânico.
                   </p>
                 )}
               </div>
@@ -322,7 +418,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
           </div>
         </div>
 
-        {/* Right Col: Timeline Feed (RF-013, RF-014, RF-015) */}
+        {/* Right Col: Timeline Feed */}
         <div className="lg:col-span-2 space-y-6">
           {/* Post Technical Note Box */}
           <div className="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3">
@@ -331,7 +427,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
               Registrar Atualização Técnica (Mecânico / Funileiro)
             </h4>
             <p className="text-xs text-gray-500">
-              Adicione atualizações e registros do serviço executado sem necessariamente alterar o status da OS (RF-014).
+              Adicione atualizações e registros do serviço executado sem necessariamente alterar o status da OS.
             </p>
 
             <form onSubmit={handleAddTechNote} className="space-y-2 text-xs">
@@ -364,7 +460,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                   Feed de Atualizações Técnicas (Linha do Tempo Imutável)
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Rastreabilidade completa com autor, data/hora e observações (RF-013, RF-015).
+                  Rastreabilidade completa com autor, data/hora e observações.
                 </p>
               </div>
               <span className="text-xs bg-[#125938] text-white px-2.5 py-1 rounded font-mono font-bold">
@@ -432,12 +528,12 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                   value={partForm.peca_id}
                   onChange={(e) => handleSelectPart(e.target.value)}
                   required
-                  className="w-full border rounded p-2 bg-gray-50"
+                  className="w-full border rounded p-2 bg-gray-50 font-semibold"
                 >
                   <option value="">-- Selecione uma peça --</option>
                   {parts.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.codigo_interno} - {p.nome} (Ref: R$ {p.preco_medio})
+                      {p.codigo_interno} - {p.nome} (Estoque: {p.estoque_atual} un | R$ {p.preco_medio})
                     </option>
                   ))}
                 </select>
@@ -453,7 +549,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                     required
                     value={partForm.quantidade}
                     onChange={(e) => setPartForm({ ...partForm, quantidade: e.target.value })}
-                    className="w-full border rounded p-2"
+                    className="w-full border rounded p-2 font-mono font-bold"
                   />
                 </div>
 
@@ -466,7 +562,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                     required
                     value={partForm.preco_unitario}
                     onChange={(e) => setPartForm({ ...partForm, preco_unitario: e.target.value })}
-                    className="w-full border rounded p-2"
+                    className="w-full border rounded p-2 font-mono font-bold text-[#06402F]"
                   />
                 </div>
               </div>
@@ -482,7 +578,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex justify-end gap-2 pt-3 border-t">
                 <button
                   type="button"
                   onClick={() => setShowPartModal(false)}
@@ -494,7 +590,7 @@ export const OSDetail = ({ os, clients, vehicles, parts, users, onBack, onRefres
                   type="submit"
                   className="px-4 py-2 bg-[#8C4580] text-white rounded font-bold shadow hover:bg-[#723668]"
                 >
-                  Adicionar à OS
+                  Adicionar à OS e Baixar Estoque
                 </button>
               </div>
             </form>
